@@ -1,6 +1,9 @@
 <template>
   <section class="scanner">
-    <video ref="videoRef" class="scanner-video" autoplay playsinline muted></video>
+    <div class="preview-shell">
+      <video ref="videoRef" class="scanner-video" autoplay playsinline muted></video>
+      <div class="scan-overlay" :class="{ active: running }"></div>
+    </div>
     <canvas ref="canvasRef" class="scanner-canvas"></canvas>
 
     <div class="scanner-actions">
@@ -44,10 +47,10 @@ async function startScanner() {
     videoRef.value.srcObject = stream
     await videoRef.value.play()
     running.value = true
-    statusText.value = 'Scanning...'
+    statusText.value = 'Scanning for badge code...'
     scanLoop()
   } catch {
-    statusText.value = 'Camera unavailable. Use Enter Code fallback.'
+    statusText.value = 'Camera unavailable. Use manual short code entry.'
   }
 }
 
@@ -116,13 +119,56 @@ onBeforeUnmount(() => {
   gap: 0.8rem;
 }
 
+.preview-shell {
+  position: relative;
+  border-radius: 0.9rem;
+  overflow: hidden;
+}
+
 .scanner-video {
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
-  border-radius: 0.75rem;
-  border: 1px solid #9ca3af;
-  background: #111827;
+  border: 1px solid #eab88e;
+  background: #2f1b0c;
+}
+
+.scan-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  box-shadow: inset 0 0 0 2rem rgba(17, 24, 39, 0.12);
+}
+
+.scan-overlay::after {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  height: 2px;
+  background: #ff8a3c;
+  top: 10%;
+  opacity: 0;
+}
+
+.scan-overlay.active::after {
+  opacity: 1;
+  animation: scanline 1.6s infinite ease-in-out;
+}
+
+@keyframes scanline {
+  0% {
+    top: 10%;
+  }
+
+  50% {
+    top: 88%;
+  }
+
+  100% {
+    top: 10%;
+  }
 }
 
 .scanner-canvas {
@@ -131,15 +177,12 @@ onBeforeUnmount(() => {
 
 .scanner-actions {
   display: grid;
-  gap: 0.5rem;
-}
-
-.scanner-actions button {
-  max-width: 10rem;
+  gap: 0.4rem;
 }
 
 .scanner-status {
   margin: 0;
-  color: #334155;
+  color: var(--text-muted);
+  font-size: 0.92rem;
 }
 </style>

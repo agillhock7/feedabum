@@ -1,32 +1,67 @@
 <template>
-  <main class="container">
-    <section v-if="loading" class="panel">Loading recipient...</section>
+  <main class="page-shell fade-up">
+    <section v-if="loading" class="loading card shimmer"></section>
 
-    <section v-else-if="error" class="panel error">{{ error }}</section>
+    <section v-else-if="fatalError" class="card error-panel">
+      <h2>Unable to load recipient</h2>
+      <p class="error-text">{{ fatalError }}</p>
+      <router-link to="/">Back to scanner</router-link>
+    </section>
 
-    <section v-else-if="recipient" class="panel">
-      <header>
-        <h1>{{ recipient.nickname }}</h1>
-        <p>{{ recipient.zone }}</p>
-      </header>
+    <section v-else-if="recipient" class="recipient-grid">
+      <section class="card-warm hero">
+        <header>
+          <h1>{{ recipient.nickname }}</h1>
+          <p class="section-subtitle">{{ recipient.zone }}</p>
+        </header>
 
-      <p class="badge" v-if="recipient.verified_at">
-        Verified by {{ recipient.verified_by_partner }} on {{ formatDate(recipient.verified_at) }}
-      </p>
+        <p class="chip" v-if="recipient.verified_at">
+          Verified by {{ recipient.verified_by_partner }} on {{ formatDate(recipient.verified_at) }}
+        </p>
 
-      <p><strong>Story:</strong> {{ recipient.story }}</p>
-      <p><strong>Current needs:</strong> {{ recipient.needs }}</p>
+        <div class="kpi-grid">
+          <article class="kpi">
+            <h4>Total received</h4>
+            <p>${{ (recipient.total_received_cents / 100).toFixed(2) }}</p>
+          </article>
+          <article class="kpi">
+            <h4>Supporters</h4>
+            <p>{{ recipient.supporters_count }}</p>
+          </article>
+          <article class="kpi">
+            <h4>Support momentum</h4>
+            <p>{{ supportMomentum }}</p>
+          </article>
+        </div>
 
-      <div class="stats">
+        <div class="goal-wrap card">
+          <div class="goal-header">
+            <strong>Community Goal</strong>
+            <span>${{ (monthlyGoalCents / 100).toFixed(0) }}/month</span>
+          </div>
+          <div class="goal-track">
+            <div class="goal-progress" :style="{ width: `${goalPct}%` }"></div>
+          </div>
+          <small>{{ goalPct.toFixed(0) }}% of monthly target reached</small>
+        </div>
+      </section>
+
+      <section class="card details">
         <article>
-          <h3>Total received</h3>
-          <p>${{ (recipient.total_received_cents / 100).toFixed(2) }}</p>
+          <h2 class="section-title">Story</h2>
+          <p>{{ recipient.story }}</p>
         </article>
+
         <article>
-          <h3>Supporters</h3>
-          <p>{{ recipient.supporters_count }}</p>
+          <h2 class="section-title">Current Needs</h2>
+          <p>{{ recipient.needs }}</p>
         </article>
-      </div>
+
+        <article v-if="cacheNotice" class="cache-note card-warm">
+          <h3>Offline fallback active</h3>
+          <p>{{ cacheNotice }}</p>
+        </article>
+      </section>
 
       <DonationForm
         :recipient-id="recipient.id"
@@ -50,18 +85,44 @@ const router = useRouter()
 const recipientStore = useRecipientStore()
 
 const loading = ref(false)
-const error = ref('')
+const fatalError = ref('')
+const cacheNotice = ref('')
 const recipient = computed(() => recipientStore.current)
+const monthlyGoalCents = 50000
+
+const goalPct = computed(() => {
+  if (!recipient.value) {
+    return 0
+  }
+
+  return Math.min(100, (recipient.value.total_received_cents / monthlyGoalCents) * 100)
+})
+
+const supportMomentum = computed(() => {
+  if (!recipient.value) {
+    return 'new'
+  }
+
+  const supporters = recipient.value.supporters_count
+  if (supporters >= 25) {
+    return 'high'
+  }
+  if (supporters >= 10) {
+    return 'steady'
+  }
+  return 'building'
+})
 
 async function loadRecipient() {
-  error.value = ''
+  fatalError.value = ''
+  cacheNotice.value = ''
   loading.value = true
 
   const token = typeof route.query.token === 'string' ? route.query.token : ''
   const code = typeof route.query.code === 'string' ? route.query.code : ''
 
   if (!token && !code) {
-    error.value = 'No token or code provided.'
+    fatalError.value = 'No token or code provided.'
     loading.value = false
     return
   }
@@ -76,9 +137,9 @@ async function loadRecipient() {
   } catch (fetchError: any) {
     const cached = recipientStore.loadCache()
     if (cached) {
-      error.value = 'Network unavailable. Showing last cached profile.'
+      cacheNotice.value = 'Network unavailable. Showing last cached profile.'
     } else {
-      error.value = fetchError?.message || 'Unable to load recipient.'
+      fatalError.value = fetchError?.message || 'Unable to load recipient.'
     }
   } finally {
     loading.value = false
@@ -109,43 +170,76 @@ watch(
 </script>
 
 <style scoped>
-.container {
-  max-width: 860px;
-  margin: 0 auto;
-  padding: 1.2rem;
+.loading {
+  height: 16rem;
 }
 
-.panel {
-  border: 1px solid #cbd5e1;
-  border-radius: 1rem;
-  background: #f8fafc;
-  padding: 1.2rem;
+.error-panel {
+  padding: 1rem;
 }
 
-.badge {
-  display: inline-block;
-  background: #cffafe;
-  color: #0f172a;
-  border-radius: 999px;
-  padding: 0.35rem 0.75rem;
-  font-size: 0.9rem;
-}
-
-.stats {
+.recipient-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.hero {
+  padding: 1rem;
+}
+
+.hero h1 {
+  margin: 0;
+}
+
+.goal-wrap {
+  margin-top: 0.9rem;
+  padding: 0.75rem;
+}
+
+.goal-header {
+  display: flex;
+  justify-content: space-between;
   gap: 0.8rem;
-  margin: 1rem 0;
+  margin-bottom: 0.5rem;
 }
 
-.stats article {
-  border: 1px solid #bfdbfe;
-  border-radius: 0.75rem;
-  padding: 0.7rem;
-  background: #eff6ff;
+.goal-track {
+  height: 0.65rem;
+  border-radius: 999px;
+  background: #ffe8d4;
+  overflow: hidden;
 }
 
-.error {
-  color: #b91c1c;
+.goal-progress {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ff8f44, #ff6b00);
+}
+
+.details {
+  padding: 1rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.details h2 {
+  margin-bottom: 0.35rem;
+}
+
+.details p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.cache-note {
+  padding: 0.75rem;
+}
+
+.cache-note h3 {
+  margin: 0;
+}
+
+.cache-note p {
+  margin-top: 0.35rem;
 }
 </style>

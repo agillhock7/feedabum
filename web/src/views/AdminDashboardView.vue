@@ -1,32 +1,65 @@
 <template>
-  <main class="container">
-    <section class="panel">
+  <main class="page-shell fade-up">
+    <section class="card-warm shell">
       <header class="heading-row">
         <div>
           <h1>Partner Dashboard</h1>
-          <p v-if="partner">Signed in as {{ partner.name }} ({{ partner.email }})</p>
+          <p class="section-subtitle" v-if="partner">Signed in as {{ partner.name }} ({{ partner.email }})</p>
         </div>
         <button @click="logout">Logout</button>
       </header>
 
-      <form class="create-form" @submit.prevent="createRecipient">
+      <section class="kpi-grid summary">
+        <article class="kpi">
+          <h4>Recipients</h4>
+          <p>{{ recipients.length }}</p>
+        </article>
+        <article class="kpi">
+          <h4>Active recipients</h4>
+          <p>{{ activeCount }}</p>
+        </article>
+        <article class="kpi">
+          <h4>Total wallet credited</h4>
+          <p>${{ totalWalletUsd }}</p>
+        </article>
+      </section>
+
+      <form class="card create-form" @submit.prevent="createRecipient">
         <h2>Create Recipient</h2>
         <label>Nickname <input v-model="createForm.nickname" required /></label>
         <label>Story <textarea v-model="createForm.story" required rows="2"></textarea></label>
         <label>Needs <textarea v-model="createForm.needs" required rows="2"></textarea></label>
         <label>Zone <input v-model="createForm.zone" required /></label>
         <label class="inline"><input v-model="createForm.verified" type="checkbox" /> Verified now</label>
-        <button type="submit" :disabled="busy">Create Recipient</button>
+        <button class="btn-primary" type="submit" :disabled="busy">Create Recipient</button>
       </form>
 
       <p v-if="tokenNotice" class="token-notice">{{ tokenNotice }}</p>
-      <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="error" class="error-text">{{ error }}</p>
 
-      <section v-for="item in recipients" :key="item.id" class="recipient-card">
-        <header>
-          <h3>{{ item.nickname }}</h3>
-          <p>Code: {{ item.code_short || 'none' }} | Received: ${{ (Number(item.total_received_cents) / 100).toFixed(2) }} | Supporters: {{ item.supporters_count }}</p>
+      <section v-for="item in recipients" :key="item.id" class="card recipient-card">
+        <header class="recipient-header">
+          <div>
+            <h3>{{ item.nickname }}</h3>
+            <p class="section-subtitle">Zone: {{ item.zone }} | Code: {{ item.code_short || 'none' }}</p>
+          </div>
+          <span class="chip">{{ item.status }}</span>
         </header>
+
+        <section class="recipient-kpis">
+          <article>
+            <h4>Received</h4>
+            <p>${{ (Number(item.total_received_cents) / 100).toFixed(2) }}</p>
+          </article>
+          <article>
+            <h4>Supporters</h4>
+            <p>{{ item.supporters_count }}</p>
+          </article>
+          <article>
+            <h4>Verified</h4>
+            <p>{{ item.verified_at ? 'yes' : 'no' }}</p>
+          </article>
+        </section>
 
         <label>Nickname <input v-model="item.nickname" /></label>
         <label>Story <textarea v-model="item.story" rows="2"></textarea></label>
@@ -49,7 +82,7 @@
         </div>
 
         <div class="row-actions">
-          <button @click="updateRecipient(item)" :disabled="busy">Save</button>
+          <button class="btn-primary" @click="updateRecipient(item)" :disabled="busy">Save</button>
           <button @click="rotateToken(item.id)" :disabled="busy">Rotate Token</button>
         </div>
       </section>
@@ -81,6 +114,11 @@ const createForm = ref({
 })
 
 const partner = computed(() => auth.partner)
+const activeCount = computed(() => recipients.value.filter((item) => item.status === 'active').length)
+const totalWalletUsd = computed(() => {
+  const cents = recipients.value.reduce((sum, item) => sum + Number(item.total_received_cents || 0), 0)
+  return (cents / 100).toFixed(2)
+})
 
 async function loadRecipients() {
   busy.value = true
@@ -174,17 +212,12 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.container {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 1.2rem;
+.shell {
+  padding: 1rem;
 }
 
-.panel {
-  border: 1px solid #cbd5e1;
-  border-radius: 1rem;
-  background: #f8fafc;
-  padding: 1.2rem;
+h1 {
+  margin: 0;
 }
 
 .heading-row {
@@ -194,13 +227,14 @@ onMounted(() => {
   align-items: start;
 }
 
+.summary {
+  margin-top: 0.95rem;
+}
+
 .create-form,
 .recipient-card {
   margin-top: 1rem;
-  border: 1px solid #cbd5e1;
-  border-radius: 0.75rem;
-  padding: 0.8rem;
-  background: #fff;
+  padding: 0.9rem;
 }
 
 label {
@@ -215,6 +249,42 @@ label {
   gap: 0.4rem;
 }
 
+.recipient-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  align-items: start;
+}
+
+.recipient-header h3 {
+  margin: 0;
+}
+
+.recipient-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0.75rem 0;
+}
+
+.recipient-kpis article {
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 0.55rem;
+  background: #fff8ef;
+}
+
+.recipient-kpis h4 {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.79rem;
+}
+
+.recipient-kpis p {
+  margin: 0.2rem 0 0;
+  font-weight: 700;
+}
+
 .controls {
   display: flex;
   gap: 1rem;
@@ -227,14 +297,25 @@ label {
 }
 
 .token-notice {
-  color: #065f46;
-  background: #dcfce7;
-  border: 1px solid #86efac;
+  color: #6c340f;
+  background: #ffe9d2;
+  border: 1px solid #f5bc86;
   border-radius: 0.6rem;
   padding: 0.6rem;
+  margin-top: 0.8rem;
 }
 
-.error {
-  color: #b91c1c;
+@media (max-width: 860px) {
+  .heading-row,
+  .controls,
+  .row-actions,
+  .recipient-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .recipient-kpis {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

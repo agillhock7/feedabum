@@ -17,10 +17,11 @@ const { online } = storeToRefs(network)
   position: sticky;
   top: 0;
   z-index: 20;
-  background: #b91c1c;
-  color: #fff;
+  background: #7a2f00;
+  color: #fff7ef;
   text-align: center;
   font-weight: 600;
   padding: 0.6rem;
+  border-bottom: 1px solid #f6bd89;
 }
 </style>

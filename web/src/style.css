@@ -1,9 +1,19 @@
 :root {
   color-scheme: light;
-  font-family: "IBM Plex Sans", "Segoe UI", Tahoma, sans-serif;
+  font-family: "Manrope", "IBM Plex Sans", "Segoe UI", sans-serif;
+  --bg: #fff9f4;
+  --bg-strong: #ffe9d2;
+  --surface: #ffffff;
+  --surface-warm: #fff4e7;
+  --text: #2f1b0c;
+  --text-muted: #855939;
+  --line: #efcfb0;
+  --brand: #ff6b00;
+  --brand-strong: #e75d00;
+  --brand-soft: #ffb37b;
+  --danger: #b42318;
+  --success: #0f9159;
   line-height: 1.5;
-  color: #0f172a;
-  background: radial-gradient(circle at top, #ecfeff 0%, #f8fafc 35%, #ffffff 100%);
 }
 
 * {
@@ -13,10 +23,19 @@
 body {
   margin: 0;
   min-height: 100vh;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 8% 0%, #ffd9ba 0%, transparent 26%),
+    radial-gradient(circle at 92% 100%, #ffe2c8 0%, transparent 30%),
+    linear-gradient(135deg, var(--bg), #fffdfb 55%, #fff5eb 100%);
+}
+
+#app {
+  min-height: 100vh;
 }
 
 a {
-  color: #0f766e;
+  color: var(--brand-strong);
   text-decoration: none;
 }
 
@@ -32,32 +51,171 @@ select {
 }
 
 button {
-  border: 1px solid #94a3b8;
-  border-radius: 0.5rem;
-  background: #fff;
-  color: #0f172a;
-  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--surface);
+  color: var(--text);
+  padding: 0.55rem 0.9rem;
   cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
 }
 
 button:hover {
-  background: #f1f5f9;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(96, 43, 0, 0.09);
+  background: #fff9f3;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+  box-shadow: none;
 }
 
 input,
 textarea,
 select {
-  border: 1px solid #94a3b8;
-  border-radius: 0.45rem;
-  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  padding: 0.6rem 0.7rem;
   background: #fff;
+  color: var(--text);
 }
 
-@media (max-width: 720px) {
-  .heading-row,
-  .controls,
-  .row-actions {
-    flex-direction: column;
-    align-items: stretch;
+textarea {
+  resize: vertical;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid color-mix(in srgb, var(--brand) 40%, white);
+  border-color: var(--brand-soft);
+}
+
+.page-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.4rem;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--surface);
+}
+
+.card-warm {
+  border: 1px solid #f0c79f;
+  border-radius: 1rem;
+  background: var(--surface-warm);
+}
+
+.section-title {
+  margin: 0;
+  font-size: 1.45rem;
+}
+
+.section-subtitle {
+  margin: 0.4rem 0 0;
+  color: var(--text-muted);
+}
+
+.btn-primary {
+  border-color: var(--brand-strong);
+  background: linear-gradient(135deg, var(--brand), var(--brand-strong));
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #ff7d21, #f06700);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid #f4c9a4;
+  background: #fff6ed;
+  color: #7a421d;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.kpi {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 0.85rem;
+  padding: 0.65rem;
+}
+
+.kpi h4 {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.kpi p {
+  margin: 0.25rem 0 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.fade-up {
+  animation: fadeUp 420ms ease both;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+  animation: shimmer 1.3s infinite;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.error-text {
+  color: var(--danger);
+}
+
+.success-text {
+  color: var(--success);
+}
+
+@media (max-width: 860px) {
+  .kpi-grid {
+    grid-template-columns: 1fr;
   }
 }

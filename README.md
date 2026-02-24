@@ -167,6 +167,8 @@ Use test events:
 - `VITE_APP_BASE=https://fab.gops.app`
 - `VITE_STRIPE_PUBLISHABLE_KEY=...`
 
+Frontend does not hold DB credentials. Database keys (`DB_*`) belong only in `api/config/config.php` (or server env vars).
+
 Default `/api` makes production work on same domain without CORS setup.
 
 ## API Endpoints
@@ -182,4 +184,3 @@ Default `/api` makes production work on same domain without CORS setup.
 - `POST /api/admin/recipient/create`
 - `POST /api/admin/recipient/update`
 - `POST /api/admin/recipient/rotate-token`
-

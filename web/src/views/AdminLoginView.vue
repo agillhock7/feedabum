@@ -1,21 +1,26 @@
 <template>
-  <main class="container panel">
-    <h1>Partner Admin Login</h1>
+  <main class="page-shell fade-up">
+    <section class="login card-warm">
+      <header>
+        <h1>Partner Admin Login</h1>
+        <p class="section-subtitle">Manage recipient verification, QR rotations, and profile updates.</p>
+      </header>
 
-    <form @submit.prevent="submit">
-      <label>
-        Email
-        <input v-model="email" type="email" required autocomplete="username" />
-      </label>
+      <form @submit.prevent="submit">
+        <label>
+          Email
+          <input v-model="email" type="email" required autocomplete="username" />
+        </label>
 
-      <label>
-        Password
-        <input v-model="password" type="password" required autocomplete="current-password" />
-      </label>
+        <label>
+          Password
+          <input v-model="password" type="password" required autocomplete="current-password" />
+        </label>
 
-      <button :disabled="busy" type="submit">Login</button>
-      <p v-if="error" class="error">{{ error }}</p>
-    </form>
+        <button class="btn-primary" :disabled="busy" type="submit">Login</button>
+        <p v-if="error" class="error-text">{{ error }}</p>
+      </form>
+    </section>
   </main>
 </template>
 
@@ -48,19 +53,18 @@ async function submit() {
 </script>
 
 <style scoped>
-.container {
-  max-width: 540px;
-  margin: 1.2rem auto;
+.login {
+  max-width: 560px;
+  margin: 0 auto;
   padding: 1.2rem;
 }
 
-.panel {
-  border: 1px solid #cbd5e1;
-  border-radius: 1rem;
-  background: #f8fafc;
+h1 {
+  margin: 0;
 }
 
 form {
+  margin-top: 0.9rem;
   display: grid;
   gap: 0.8rem;
 }
@@ -68,9 +72,5 @@ form {
 label {
   display: grid;
   gap: 0.3rem;
-}
-
-.error {
-  color: #b91c1c;
 }
 </style>
