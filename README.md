@@ -153,6 +153,20 @@ This runs Vite in `web/` and writes output into repo-root `dist/`.
 
 For cPanel Git deployment, commit `dist/` changes before pushing.
 
+## Social Share Metadata and Card
+
+The frontend ships with Open Graph + Twitter metadata for social previews on X, Facebook, Discord, and similar platforms.
+
+Social card assets:
+- `web/public/social/fab-social-card.svg`
+- `web/public/social/fab-social-card.png` (1200x630)
+
+Regenerate the PNG from SVG:
+
+```bash
+npm run social:card
+```
+
 ## cPanel Deployment (exact target)
 
 Remote and server:

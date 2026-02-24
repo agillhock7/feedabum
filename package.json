@@ -4,6 +4,7 @@
   "scripts": {
     "build": "./scripts/build-dist.sh",
     "build:web": "npm --prefix web run build",
-    "dev:web": "npm --prefix web run dev"
+    "dev:web": "npm --prefix web run dev",
+    "social:card": "npm --prefix web run social:card"
   }
 }
