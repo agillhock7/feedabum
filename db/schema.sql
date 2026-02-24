@@ -9,9 +9,26 @@ CREATE TABLE IF NOT EXISTS partners (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS users (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    partner_id BIGINT UNSIGNED NULL,
+    email VARCHAR(191) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    display_name VARCHAR(120) NOT NULL,
+    role ENUM('member', 'admin_owner', 'admin_outreach', 'admin_demo') NOT NULL DEFAULT 'member',
+    status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_login_at DATETIME NULL,
+    CONSTRAINT fk_users_partner FOREIGN KEY (partner_id) REFERENCES partners (id) ON DELETE SET NULL,
+    INDEX idx_users_role (role),
+    INDEX idx_users_partner (partner_id),
+    INDEX idx_users_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS recipients (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     partner_id BIGINT UNSIGNED NOT NULL,
+    user_id BIGINT UNSIGNED NULL,
     nickname VARCHAR(120) NOT NULL,
     story TEXT NOT NULL,
     needs TEXT NOT NULL,
@@ -28,7 +45,9 @@ CREATE TABLE IF NOT EXISTS recipients (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_recipients_partner FOREIGN KEY (partner_id) REFERENCES partners (id) ON DELETE CASCADE,
+    CONSTRAINT fk_recipients_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL,
     INDEX idx_recipients_partner (partner_id),
+    INDEX idx_recipients_user (user_id),
     INDEX idx_recipients_status (status),
     INDEX idx_recipients_city (city),
     INDEX idx_recipients_onboarding_status (onboarding_status),
@@ -51,8 +70,11 @@ CREATE TABLE IF NOT EXISTS recipient_tokens (
 
 CREATE TABLE IF NOT EXISTS donors (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NULL,
     email VARCHAR(191) NULL UNIQUE,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_donors_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL,
+    INDEX idx_donors_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS donations (

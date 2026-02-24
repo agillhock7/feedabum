@@ -2,6 +2,7 @@
   <main class="page-shell fade-up">
     <section class="login card-warm">
       <header>
+        <img src="/branding/fab-wordmark.svg" alt="Feed A Bum" class="wordmark" />
         <h1>Partner Admin Login</h1>
         <p class="section-subtitle">Manage recipient verification, QR rotations, and profile updates.</p>
         <p v-if="auth.demoLoginEnabled" class="chip">
@@ -43,14 +44,14 @@ import { useAuthStore } from '../stores/auth'
 const router = useRouter()
 const auth = useAuthStore()
 
-const email = ref('admin@feedabum.local')
-const password = ref('DevPass!234')
+const email = ref('owner@feedabum.local')
+const password = ref('OwnerPass!234')
 const busy = ref(false)
 const error = ref('')
 
 function fillDemoCredentials() {
-  email.value = auth.demoLoginEmail || 'admin@feedabum.local'
-  password.value = 'DevPass!234'
+  email.value = auth.demoLoginEmail || 'demo@feedabum.local'
+  password.value = 'DemoPass!234'
 }
 
 async function submit() {
@@ -77,6 +78,12 @@ onMounted(() => {
   max-width: 560px;
   margin: 0 auto;
   padding: 1.2rem;
+}
+
+.wordmark {
+  width: min(100%, 280px);
+  border-radius: 0.55rem;
+  margin-bottom: 0.65rem;
 }
 
 h1 {

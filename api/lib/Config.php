@@ -74,7 +74,7 @@ final class Config
             'DEFAULT_PARTNER_ID' => 1,
             'DEFAULT_CITY' => 'Tucson, AZ',
             'DEMO_LOGIN_ENABLED' => false,
-            'DEMO_LOGIN_EMAIL' => 'admin@feedabum.local',
+            'DEMO_LOGIN_EMAIL' => 'demo@feedabum.local',
         ];
 
         foreach ($defaults as $key => $defaultValue) {

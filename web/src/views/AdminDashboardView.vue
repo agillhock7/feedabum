@@ -3,14 +3,16 @@
     <section class="card-warm shell">
       <header class="heading-row">
         <div>
-          <h1>Tucson Operations Dashboard</h1>
-          <p class="section-subtitle" v-if="partner">Signed in as {{ partner.name }} ({{ partner.email }})</p>
+          <h1>Feed A Bum Control Center</h1>
+          <p v-if="admin" class="section-subtitle">
+            Signed in as {{ admin.display_name }} ({{ admin.email }}) • role: {{ admin.role }}
+          </p>
         </div>
         <button @click="logout">Logout</button>
       </header>
 
       <p v-if="isDemo" class="token-notice">
-        Demo mode is active. This session is read-only and cannot create or modify recipients.
+        Demo mode is active. This session is read-only and cannot create or modify records.
       </p>
 
       <section class="kpi-grid summary">
@@ -28,6 +30,50 @@
         </article>
       </section>
 
+      <section v-if="isOwner" class="card admin-access">
+        <header class="row-head">
+          <h2>Admin Access Management</h2>
+        </header>
+
+        <form class="form-grid" @submit.prevent="createAdminUser">
+          <label>Admin name <input v-model="adminUserForm.display_name" required /></label>
+          <label>Email <input v-model="adminUserForm.email" type="email" required /></label>
+          <label>Password <input v-model="adminUserForm.password" type="password" minlength="8" required /></label>
+          <label>
+            Role
+            <select v-model="adminUserForm.role">
+              <option value="admin_outreach">admin_outreach</option>
+              <option value="admin_demo">admin_demo</option>
+              <option value="admin_owner">admin_owner</option>
+            </select>
+          </label>
+          <label v-if="adminUserForm.role !== 'admin_owner'">
+            Partner ID
+            <input v-model.number="adminUserForm.partner_id" type="number" min="1" required />
+          </label>
+          <button class="btn-primary" type="submit" :disabled="busy || isDemo">Create Admin User</button>
+        </form>
+
+        <div class="admin-users-list">
+          <article v-for="user in adminUsers" :key="user.id" class="admin-user-row">
+            <div>
+              <strong>{{ user.display_name }}</strong>
+              <p>{{ user.email }} • {{ user.role }} • partner: {{ user.partner_name || user.partner_id || 'global' }}</p>
+            </div>
+            <div class="actions">
+              <span class="chip">{{ user.status }}</span>
+              <button
+                type="button"
+                :disabled="busy || isDemo"
+                @click="setAdminStatus(user, user.status === 'active' ? 'disabled' : 'active')"
+              >
+                {{ user.status === 'active' ? 'Disable' : 'Enable' }}
+              </button>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section class="card create-form">
         <header class="row-head">
           <h2>Create Recipient (Admin Intake)</h2>
@@ -35,6 +81,7 @@
         </header>
 
         <form v-if="showCreate" class="form-grid" @submit.prevent="createRecipient">
+          <label v-if="isOwner">Partner ID <input v-model.number="createForm.partner_id" type="number" min="1" placeholder="1" /></label>
           <label>Nickname <input v-model="createForm.nickname" required /></label>
           <label>Zone <input v-model="createForm.zone" required placeholder="Downtown Tucson" /></label>
           <label>City <input v-model="createForm.city" required /></label>
@@ -164,7 +211,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../services/api'
-import type { AdminRecipient, Partner } from '../types'
+import type { AdminRecipient, AdminUser } from '../types'
 import { useAuthStore } from '../stores/auth'
 import ZoneMapPicker from '../components/ZoneMapPicker.vue'
 
@@ -172,6 +219,7 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const recipients = ref<AdminRecipient[]>([])
+const adminUsers = ref<AdminUser[]>([])
 const busy = ref(false)
 const error = ref('')
 const tokenNotice = ref('')
@@ -188,6 +236,7 @@ const summary = ref({
 })
 
 const createForm = ref({
+  partner_id: 1,
   nickname: '',
   story: '',
   needs: '',
@@ -196,6 +245,14 @@ const createForm = ref({
   contact_email: '',
   contact_phone: '',
   verified: true
+})
+
+const adminUserForm = ref({
+  display_name: '',
+  email: '',
+  password: '',
+  role: 'admin_outreach' as 'admin_owner' | 'admin_outreach' | 'admin_demo',
+  partner_id: 1
 })
 
 const createCoordinates = ref<{ lat: number | null; lng: number | null }>({
@@ -231,8 +288,9 @@ const editor = reactive<{
 
 const editorCoordinates = ref<{ lat: number | null; lng: number | null }>({ lat: null, lng: null })
 
-const partner = computed(() => auth.partner)
+const admin = computed(() => auth.admin)
 const isDemo = computed(() => auth.isDemo)
+const isOwner = computed(() => auth.admin?.role === 'admin_owner')
 const selectedRecipient = computed(() => recipients.value.find((item) => item.id === selectedId.value) || null)
 
 const filteredRecipients = computed(() => {
@@ -308,9 +366,7 @@ async function loadRecipients() {
   try {
     const result = await api.get<{
       ok: true
-      partner: Partner | null
-      is_demo?: boolean
-      demo_login_enabled?: boolean
+      admin: AdminUser | null
       summary: {
         total_recipients: number
         active_recipients: number
@@ -318,13 +374,17 @@ async function loadRecipients() {
         new_onboarding_count: number
       }
       recipients: AdminRecipient[]
+      is_demo?: boolean
+      demo_login_enabled?: boolean
+      can_manage_all?: boolean
     }>('/admin/recipients')
 
-    auth.partner = result.partner
+    auth.admin = result.admin
     auth.isDemo = Boolean(result.is_demo)
     if (typeof result.demo_login_enabled === 'boolean') {
       auth.demoLoginEnabled = result.demo_login_enabled
     }
+
     summary.value = {
       total_recipients: Number(result.summary.total_recipients || 0),
       active_recipients: Number(result.summary.active_recipients || 0),
@@ -349,9 +409,77 @@ async function loadRecipients() {
   }
 }
 
+async function loadAdminUsers() {
+  if (!isOwner.value) {
+    adminUsers.value = []
+    return
+  }
+
+  try {
+    const result = await api.get<{ ok: true; users: AdminUser[] }>('/admin/users')
+    adminUsers.value = result.users
+  } catch (err: any) {
+    error.value = err?.message || 'Unable to load admin users.'
+  }
+}
+
+async function createAdminUser() {
+  if (!isOwner.value) {
+    return
+  }
+
+  busy.value = true
+  error.value = ''
+
+  try {
+    await api.post('/admin/user/create', {
+      display_name: adminUserForm.value.display_name,
+      email: adminUserForm.value.email,
+      password: adminUserForm.value.password,
+      role: adminUserForm.value.role,
+      partner_id: adminUserForm.value.role === 'admin_owner' ? null : adminUserForm.value.partner_id
+    })
+
+    adminUserForm.value = {
+      display_name: '',
+      email: '',
+      password: '',
+      role: 'admin_outreach',
+      partner_id: 1
+    }
+
+    await loadAdminUsers()
+  } catch (err: any) {
+    error.value = err?.message || 'Unable to create admin user.'
+  } finally {
+    busy.value = false
+  }
+}
+
+async function setAdminStatus(user: AdminUser, status: 'active' | 'disabled') {
+  if (!isOwner.value) {
+    return
+  }
+
+  busy.value = true
+  error.value = ''
+
+  try {
+    await api.post('/admin/user/update-status', {
+      user_id: user.id,
+      status
+    })
+    await loadAdminUsers()
+  } catch (err: any) {
+    error.value = err?.message || 'Unable to update admin status.'
+  } finally {
+    busy.value = false
+  }
+}
+
 async function createRecipient() {
   if (isDemo.value) {
-    error.value = 'Demo mode is read-only. Log in with a non-demo admin account to create recipients.'
+    error.value = 'Demo mode is read-only. Log in with non-demo admin account to create recipients.'
     return
   }
 
@@ -362,12 +490,14 @@ async function createRecipient() {
   try {
     const result = await api.post<{ ok: true; recipient_id: number; token: string; code_short: string }>('/admin/recipient/create', {
       ...createForm.value,
+      partner_id: isOwner.value ? createForm.value.partner_id : null,
       latitude: createCoordinates.value.lat,
       longitude: createCoordinates.value.lng
     })
 
     tokenNotice.value = `New token for recipient #${result.recipient_id}: ${result.token} | short code: ${result.code_short}`
     createForm.value = {
+      partner_id: 1,
       nickname: '',
       story: '',
       needs: '',
@@ -393,7 +523,7 @@ async function saveSelected() {
   }
 
   if (isDemo.value) {
-    error.value = 'Demo mode is read-only. Log in with a non-demo admin account to save changes.'
+    error.value = 'Demo mode is read-only. Log in with non-demo admin account to save changes.'
     return
   }
 
@@ -428,7 +558,7 @@ async function saveSelected() {
 
 async function rotateToken(recipientId: number) {
   if (isDemo.value) {
-    error.value = 'Demo mode is read-only. Log in with a non-demo admin account to rotate tokens.'
+    error.value = 'Demo mode is read-only. Log in with non-demo admin account to rotate tokens.'
     return
   }
 
@@ -454,8 +584,9 @@ async function logout() {
   await router.push({ name: 'admin-login' })
 }
 
-onMounted(() => {
-  void loadRecipients()
+onMounted(async () => {
+  await loadRecipients()
+  await loadAdminUsers()
 })
 </script>
 
@@ -478,7 +609,8 @@ h2 {
 
 .summary,
 .create-form,
-.manage-grid {
+.manage-grid,
+.admin-access {
   margin-top: 1rem;
 }
 
@@ -491,7 +623,8 @@ h2 {
 
 .create-form,
 .roster,
-.editor {
+.editor,
+.admin-access {
   padding: 0.85rem;
 }
 
@@ -565,7 +698,8 @@ label {
   margin: 0.75rem 0;
 }
 
-.recipient-kpis article {
+.recipient-kpis article,
+.admin-user-row {
   border: 1px solid var(--line);
   border-radius: 0.75rem;
   padding: 0.55rem;
@@ -586,6 +720,7 @@ label {
 .actions {
   display: flex;
   gap: 0.6rem;
+  align-items: center;
 }
 
 .empty {
@@ -603,11 +738,30 @@ label {
   margin-top: 0.8rem;
 }
 
+.admin-users-list {
+  margin-top: 0.8rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.admin-user-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.admin-user-row p {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+}
+
 @media (max-width: 980px) {
   .heading-row,
   .row-head,
   .actions,
-  .recipient-item {
+  .recipient-item,
+  .admin-user-row {
     flex-direction: column;
     align-items: stretch;
   }

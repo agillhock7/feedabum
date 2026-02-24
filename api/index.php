@@ -30,49 +30,167 @@ switch ($method . ' ' . $path) {
             throw new HttpException(422, 'Email and password are required.');
         }
 
-        $isDemoEmail = $email === (string) $config['DEMO_LOGIN_EMAIL'];
-        if ($isDemoEmail && !(bool) $config['DEMO_LOGIN_ENABLED']) {
-            throw new HttpException(403, 'Demo login is currently disabled.');
-        }
-
-        $throttleKey = 'login:' . fab_client_ip() . ':' . $email;
+        $throttleKey = 'login:admin:' . fab_client_ip() . ':' . $email;
         $attempt = $throttle->hit($throttleKey, $config['RATE_LIMIT_LOGIN_MAX'], $config['RATE_LIMIT_LOGIN_WINDOW']);
         if (!$attempt['allowed']) {
             Response::error('Too many login attempts.', 429, ['retry_after' => $attempt['retry_after']]);
         }
 
-        $stmt = $pdo->prepare('SELECT id, name, email, password_hash FROM partners WHERE email = :email LIMIT 1');
+        $stmt = $pdo->prepare(
+            'SELECT id, partner_id, email, password_hash, display_name, role, status
+             FROM users
+             WHERE email = :email
+               AND role IN ("admin_owner", "admin_outreach", "admin_demo")
+             LIMIT 1'
+        );
         $stmt->execute(['email' => $email]);
-        $partner = $stmt->fetch();
+        $admin = $stmt->fetch();
 
-        if (!$partner || !password_verify($password, (string) $partner['password_hash'])) {
+        if (!$admin || !password_verify($password, (string) $admin['password_hash'])) {
             throw new HttpException(401, 'Invalid credentials.');
+        }
+
+        if (($admin['status'] ?? 'disabled') !== 'active') {
+            throw new HttpException(403, 'Admin account is disabled.');
+        }
+
+        $isDemoRole = (string) $admin['role'] === 'admin_demo';
+        if ($isDemoRole) {
+            if (!(bool) $config['DEMO_LOGIN_ENABLED']) {
+                throw new HttpException(403, 'Demo login is currently disabled.');
+            }
+
+            if ($email !== (string) $config['DEMO_LOGIN_EMAIL']) {
+                throw new HttpException(403, 'This demo account is not allowed by current demo settings.');
+            }
         }
 
         $throttle->clear($throttleKey);
         session_regenerate_id(true);
-        $_SESSION['partner_id'] = (int) $partner['id'];
-        $_SESSION['is_demo'] = $isDemoEmail;
 
-        fab_audit($pdo, 'partner', (int) $partner['id'], 'auth.login', ['email' => $email]);
+        $_SESSION['admin_user_id'] = (int) $admin['id'];
+        $_SESSION['admin_role'] = (string) $admin['role'];
+        $_SESSION['admin_partner_id'] = isset($admin['partner_id']) ? (int) $admin['partner_id'] : null;
+        $_SESSION['is_demo'] = $isDemoRole;
+
+        $pdo->prepare('UPDATE users SET last_login_at = UTC_TIMESTAMP() WHERE id = :id')->execute(['id' => $admin['id']]);
+
+        fab_audit($pdo, 'user', (int) $admin['id'], 'auth.login.admin', ['email' => $email, 'role' => $admin['role']]);
 
         Response::ok([
-            'partner' => [
-                'id' => (int) $partner['id'],
-                'name' => (string) $partner['name'],
-                'email' => (string) $partner['email'],
+            'admin' => [
+                'id' => (int) $admin['id'],
+                'partner_id' => isset($admin['partner_id']) ? (int) $admin['partner_id'] : null,
+                'email' => (string) $admin['email'],
+                'display_name' => (string) $admin['display_name'],
+                'role' => (string) $admin['role'],
             ],
-            'is_demo' => $isDemoEmail,
+            'is_demo' => $isDemoRole,
             'demo_login_enabled' => (bool) $config['DEMO_LOGIN_ENABLED'],
         ]);
 
     case 'POST /auth/logout':
-        $partnerId = $_SESSION['partner_id'] ?? null;
-        if (is_int($partnerId)) {
-            fab_audit($pdo, 'partner', $partnerId, 'auth.logout', []);
+        $adminUserId = $_SESSION['admin_user_id'] ?? null;
+        if (is_int($adminUserId)) {
+            fab_audit($pdo, 'user', $adminUserId, 'auth.logout.admin', []);
         }
         Session::destroy();
         Response::ok();
+
+    case 'POST /user/register':
+        $input = fab_json_input();
+
+        $email = fab_required_email((string) ($input['email'] ?? ''));
+        $password = (string) ($input['password'] ?? '');
+        $displayName = trim((string) ($input['display_name'] ?? ''));
+        if ($displayName === '') {
+            $displayName = strstr($email, '@', true) ?: 'Community Member';
+        }
+
+        if (strlen($password) < 8) {
+            throw new HttpException(422, 'Password must be at least 8 characters.');
+        }
+
+        $userId = fab_create_member_user($pdo, $email, $password, $displayName);
+
+        Response::ok([
+            'user_id' => $userId,
+            'email' => $email,
+            'display_name' => $displayName,
+        ], 201);
+
+    case 'POST /user/login':
+        $input = fab_json_input();
+
+        $email = fab_required_email((string) ($input['email'] ?? ''));
+        $password = (string) ($input['password'] ?? '');
+
+        $throttleKey = 'login:user:' . fab_client_ip() . ':' . $email;
+        $attempt = $throttle->hit($throttleKey, $config['RATE_LIMIT_LOGIN_MAX'], $config['RATE_LIMIT_LOGIN_WINDOW']);
+        if (!$attempt['allowed']) {
+            Response::error('Too many login attempts.', 429, ['retry_after' => $attempt['retry_after']]);
+        }
+
+        $stmt = $pdo->prepare(
+            'SELECT id, email, password_hash, display_name, role, status
+             FROM users
+             WHERE email = :email
+               AND role = "member"
+             LIMIT 1'
+        );
+        $stmt->execute(['email' => $email]);
+        $user = $stmt->fetch();
+
+        if (!$user || !password_verify($password, (string) $user['password_hash'])) {
+            throw new HttpException(401, 'Invalid credentials.');
+        }
+
+        if (($user['status'] ?? 'disabled') !== 'active') {
+            throw new HttpException(403, 'User account is disabled.');
+        }
+
+        $throttle->clear($throttleKey);
+        $_SESSION['member_user_id'] = (int) $user['id'];
+        $_SESSION['member_user_email'] = (string) $user['email'];
+
+        $pdo->prepare('UPDATE users SET last_login_at = UTC_TIMESTAMP() WHERE id = :id')->execute(['id' => $user['id']]);
+
+        fab_audit($pdo, 'user', (int) $user['id'], 'auth.login.member', ['email' => $email]);
+
+        Response::ok([
+            'user' => [
+                'id' => (int) $user['id'],
+                'email' => (string) $user['email'],
+                'display_name' => (string) $user['display_name'],
+            ],
+        ]);
+
+    case 'POST /user/logout':
+        unset($_SESSION['member_user_id'], $_SESSION['member_user_email']);
+        Response::ok();
+
+    case 'GET /user/me':
+        $memberUserId = $_SESSION['member_user_id'] ?? null;
+        if (!is_int($memberUserId)) {
+            Response::ok(['user' => null]);
+        }
+
+        $stmt = $pdo->prepare('SELECT id, email, display_name, role, status FROM users WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $memberUserId]);
+        $user = $stmt->fetch();
+
+        if (!$user || (string) $user['role'] !== 'member') {
+            Response::ok(['user' => null]);
+        }
+
+        Response::ok([
+            'user' => [
+                'id' => (int) $user['id'],
+                'email' => (string) $user['email'],
+                'display_name' => (string) $user['display_name'],
+                'status' => (string) $user['status'],
+            ],
+        ]);
 
     case 'GET /recipient/by-token':
         $token = trim((string) ($_GET['token'] ?? ''));
@@ -124,7 +242,8 @@ switch ($method . ' ' . $path) {
         $needs = trim((string) ($input['needs'] ?? ''));
         $zone = trim((string) ($input['zone'] ?? ''));
         $city = trim((string) ($input['city'] ?? $config['DEFAULT_CITY']));
-        $contactEmail = fab_optional_email($input['contact_email'] ?? null);
+        $contactEmail = fab_required_email((string) ($input['contact_email'] ?? ''));
+        $accountPassword = (string) ($input['account_password'] ?? '');
         $contactPhone = fab_optional_phone($input['contact_phone'] ?? null);
         $latitude = fab_optional_coordinate($input['latitude'] ?? null, -90.0, 90.0, 'latitude');
         $longitude = fab_optional_coordinate($input['longitude'] ?? null, -180.0, 180.0, 'longitude');
@@ -134,70 +253,93 @@ switch ($method . ' ' . $path) {
             throw new HttpException(422, 'nickname, story, needs, and zone are required.');
         }
 
+        if (strlen($accountPassword) < 8) {
+            throw new HttpException(422, 'account_password must be at least 8 characters.');
+        }
+
         if ($city === '') {
             $city = (string) $config['DEFAULT_CITY'];
         }
 
         fab_require_partner_exists($pdo, $partnerId);
 
-        $stmt = $pdo->prepare(
-            'INSERT INTO recipients (
-                partner_id,
-                nickname,
-                story,
-                needs,
-                zone,
-                city,
-                latitude,
-                longitude,
-                signup_source,
-                onboarding_status,
-                contact_email,
-                contact_phone,
-                verified_at,
-                status,
-                created_at,
-                updated_at
-             ) VALUES (
-                :partner_id,
-                :nickname,
-                :story,
-                :needs,
-                :zone,
-                :city,
-                :latitude,
-                :longitude,
-                :signup_source,
-                :onboarding_status,
-                :contact_email,
-                :contact_phone,
-                NULL,
-                :status,
-                UTC_TIMESTAMP(),
-                UTC_TIMESTAMP()
-             )'
-        );
-        $stmt->execute([
-            'partner_id' => $partnerId,
-            'nickname' => $nickname,
-            'story' => $story,
-            'needs' => $needs,
-            'zone' => $zone,
-            'city' => $city,
-            'latitude' => $latitude,
-            'longitude' => $longitude,
-            'signup_source' => 'self',
-            'onboarding_status' => 'new',
-            'contact_email' => $contactEmail,
-            'contact_phone' => $contactPhone,
-            'status' => 'active',
-        ]);
+        $existingStmt = $pdo->prepare('SELECT id FROM users WHERE email = :email LIMIT 1');
+        $existingStmt->execute(['email' => $contactEmail]);
+        if ($existingStmt->fetch()) {
+            throw new HttpException(409, 'An account with this email already exists. Use login instead.');
+        }
 
-        $recipientId = (int) $pdo->lastInsertId();
-        $tokenData = $tokenService->createForRecipient($recipientId);
+        $pdo->beginTransaction();
+        try {
+            $memberUserId = fab_create_member_user($pdo, $contactEmail, $accountPassword, $nickname);
 
-        fab_audit($pdo, 'recipient', $recipientId, 'recipient.self_signup', [
-            'signup_source' => 'self',
+            $stmt = $pdo->prepare(
+                'INSERT INTO recipients (
+                    partner_id,
+                    user_id,
+                    nickname,
+                    story,
+                    needs,
+                    zone,
+                    city,
+                    latitude,
+                    longitude,
+                    signup_source,
+                    onboarding_status,
+                    contact_email,
+                    contact_phone,
+                    verified_at,
+                    status,
+                    created_at,
+                    updated_at
+                 ) VALUES (
+                    :partner_id,
+                    :user_id,
+                    :nickname,
+                    :story,
+                    :needs,
+                    :zone,
+                    :city,
+                    :latitude,
+                    :longitude,
+                    :signup_source,
+                    :onboarding_status,
+                    :contact_email,
+                    :contact_phone,
+                    NULL,
+                    :status,
+                    UTC_TIMESTAMP(),
+                    UTC_TIMESTAMP()
+                 )'
+            );
+            $stmt->execute([
+                'partner_id' => $partnerId,
+                'user_id' => $memberUserId,
+                'nickname' => $nickname,
+                'story' => $story,
+                'needs' => $needs,
+                'zone' => $zone,
+                'city' => $city,
+                'latitude' => $latitude,
+                'longitude' => $longitude,
+                'signup_source' => 'self',
+                'onboarding_status' => 'new',
+                'contact_email' => $contactEmail,
+                'contact_phone' => $contactPhone,
+                'status' => 'active',
+            ]);
+
+            $recipientId = (int) $pdo->lastInsertId();
+            $tokenData = $tokenService->createForRecipient($recipientId);
+
+            $pdo->commit();
+        } catch (Throwable $exception) {
+            $pdo->rollBack();
+            throw $exception;
+        }
+
+        fab_audit($pdo, 'user', $memberUserId, 'recipient.self_signup', [
+            'recipient_id' => $recipientId,
             'city' => $city,
             'zone' => $zone,
         ]);
@@ -206,6 +348,7 @@ switch ($method . ' ' . $path) {
 
         Response::ok([
             'recipient_id' => $recipientId,
+            'user_id' => $memberUserId,
             'onboarding_status' => 'new',
             'token' => $tokenData['token'],
             'code_short' => $tokenData['code_short'],
@@ -234,9 +377,21 @@ switch ($method . ' ' . $path) {
 
         fab_require_active_recipient($pdo, $recipientId);
 
+        $memberUserId = $_SESSION['member_user_id'] ?? null;
+        if (!is_int($memberUserId)) {
+            $memberUserId = null;
+        }
+
+        if ($donorEmail === '' && $memberUserId !== null) {
+            $emailStmt = $pdo->prepare('SELECT email FROM users WHERE id = :id LIMIT 1');
+            $emailStmt->execute(['id' => $memberUserId]);
+            $emailRow = $emailStmt->fetch();
+            $donorEmail = strtolower(trim((string) ($emailRow['email'] ?? '')));
+        }
+
         $intent = $stripeClient->createPaymentIntent($amountCents, $currency, $recipientId, $donorEmail !== '' ? $donorEmail : null);
 
-        $donorId = fab_create_or_get_donor($pdo, $donorEmail !== '' ? $donorEmail : null);
+        $donorId = fab_create_or_get_donor($pdo, $donorEmail !== '' ? $donorEmail : null, $memberUserId);
 
         $insert = $pdo->prepare(
             'INSERT INTO donations (donor_id, recipient_id, amount_cents, currency, stripe_payment_intent_id, status, created_at)
@@ -300,11 +455,29 @@ switch ($method . ' ' . $path) {
         fab_process_stripe_webhook($config, $pdo);
 
     case 'GET /admin/recipients':
-        $partnerId = Auth::requirePartnerId();
+        $adminContext = Auth::requireAdminContext();
+
+        $where = '1=1';
+        $params = [];
+
+        $requestedPartnerId = isset($_GET['partner_id']) ? (int) $_GET['partner_id'] : null;
+        if (!Auth::canManageAllPartners($adminContext)) {
+            if (!is_int($adminContext['partner_id'])) {
+                throw new HttpException(403, 'Partner scope is missing for this admin.');
+            }
+            $where = 'r.partner_id = :partner_id';
+            $params['partner_id'] = $adminContext['partner_id'];
+        } elseif ($requestedPartnerId && $requestedPartnerId > 0) {
+            $where = 'r.partner_id = :partner_id';
+            $params['partner_id'] = $requestedPartnerId;
+        }
 
         $stmt = $pdo->prepare(
             'SELECT
                 r.id,
+                r.partner_id,
+                p.name AS partner_name,
+                r.user_id,
                 r.nickname,
                 r.story,
                 r.needs,
@@ -336,6 +509,7 @@ switch ($method . ' ' . $path) {
                     WHERE s.recipient_id = r.id AND s.status IN ("active", "trialing") AND s.donor_id IS NOT NULL
                 ), 0) AS supporters_count
              FROM recipients r
+             INNER JOIN partners p ON p.id = r.partner_id
              LEFT JOIN (
                 SELECT recipient_id, MAX(id) AS max_id
                 FROM recipient_tokens
@@ -343,10 +517,10 @@ switch ($method . ' ' . $path) {
                 GROUP BY recipient_id
              ) token_ptr ON token_ptr.recipient_id = r.id
              LEFT JOIN recipient_tokens rt ON rt.id = token_ptr.max_id
-             WHERE r.partner_id = :partner_id
+             WHERE ' . $where . '
              ORDER BY r.created_at DESC'
         );
-        $stmt->execute(['partner_id' => $partnerId]);
+        $stmt->execute($params);
         $recipients = array_map('fab_normalize_recipient_row', $stmt->fetchAll());
 
         $summaryStmt = $pdo->prepare(
@@ -355,10 +529,10 @@ switch ($method . ' ' . $path) {
                 SUM(CASE WHEN status = "active" THEN 1 ELSE 0 END) AS active_recipients,
                 SUM(CASE WHEN signup_source = "self" THEN 1 ELSE 0 END) AS self_signup_count,
                 SUM(CASE WHEN onboarding_status = "new" THEN 1 ELSE 0 END) AS new_onboarding_count
-             FROM recipients
-             WHERE partner_id = :partner_id'
+             FROM recipients r
+             WHERE ' . $where
         );
-        $summaryStmt->execute(['partner_id' => $partnerId]);
+        $summaryStmt->execute($params);
         $summary = $summaryStmt->fetch() ?: [
             'total_recipients' => 0,
             'active_recipients' => 0,
@@ -366,18 +540,21 @@ switch ($method . ' ' . $path) {
             'new_onboarding_count' => 0,
         ];
 
+        $admin = Auth::currentAdmin($pdo);
         $partner = Auth::currentPartner($pdo);
 
         Response::ok([
+            'admin' => $admin,
             'partner' => $partner,
             'summary' => $summary,
             'recipients' => $recipients,
             'is_demo' => Auth::isDemoSession(),
+            'can_manage_all' => Auth::canManageAllPartners($adminContext),
             'demo_login_enabled' => (bool) $config['DEMO_LOGIN_ENABLED'],
         ]);
 
     case 'POST /admin/recipient/create':
-        $partnerId = Auth::requirePartnerId();
+        $adminContext = Auth::requireAdminContext();
         Auth::requireWritableSession();
         $input = fab_json_input();
 
@@ -396,6 +573,8 @@ switch ($method . ' ' . $path) {
             throw new HttpException(422, 'nickname, story, needs, and zone are required.');
         }
 
+        $partnerId = fab_resolve_target_partner_id($pdo, $adminContext, $input['partner_id'] ?? null, (int) $config['DEFAULT_PARTNER_ID']);
+
         $status = 'active';
         $verifiedAt = $verified ? gmdate('Y-m-d H:i:s') : null;
         $onboardingStatus = $verified ? 'verified' : 'reviewed';
@@ -403,6 +582,7 @@ switch ($method . ' ' . $path) {
         $stmt = $pdo->prepare(
             'INSERT INTO recipients (
                 partner_id,
+                user_id,
                 nickname,
                 story,
                 needs,
@@ -420,6 +600,7 @@ switch ($method . ' ' . $path) {
                 updated_at
              ) VALUES (
                 :partner_id,
+                NULL,
                 :nickname,
                 :story,
                 :needs,
@@ -457,7 +638,7 @@ switch ($method . ' ' . $path) {
         $recipientId = (int) $pdo->lastInsertId();
         $tokenData = $tokenService->createForRecipient($recipientId);
 
-        fab_audit($pdo, 'partner', $partnerId, 'recipient.create', ['recipient_id' => $recipientId]);
+        fab_audit($pdo, 'user', (int) $adminContext['user_id'], 'recipient.create', ['recipient_id' => $recipientId]);
 
         Response::ok([
             'recipient_id' => $recipientId,
@@ -466,7 +647,7 @@ switch ($method . ' ' . $path) {
         ], 201);
 
     case 'POST /admin/recipient/update':
-        $partnerId = Auth::requirePartnerId();
+        $adminContext = Auth::requireAdminContext();
         Auth::requireWritableSession();
         $input = fab_json_input();
 
@@ -475,11 +656,11 @@ switch ($method . ' ' . $path) {
             throw new HttpException(422, 'recipient_id is required.');
         }
 
-        fab_assert_partner_owns_recipient($pdo, $partnerId, $recipientId);
+        fab_assert_admin_can_access_recipient($pdo, $adminContext, $recipientId);
 
         $allowedStatus = ['active', 'suspended'];
         $updates = [];
-        $params = ['recipient_id' => $recipientId, 'partner_id' => $partnerId];
+        $params = ['recipient_id' => $recipientId];
 
         foreach (['nickname', 'story', 'needs', 'zone', 'city', 'contact_email', 'contact_phone'] as $field) {
             if (array_key_exists($field, $input)) {
@@ -552,16 +733,16 @@ switch ($method . ' ' . $path) {
 
         $updates[] = 'updated_at = UTC_TIMESTAMP()';
 
-        $sql = 'UPDATE recipients SET ' . implode(', ', $updates) . ' WHERE id = :recipient_id AND partner_id = :partner_id';
+        $sql = 'UPDATE recipients SET ' . implode(', ', $updates) . ' WHERE id = :recipient_id';
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
 
-        fab_audit($pdo, 'partner', $partnerId, 'recipient.update', ['recipient_id' => $recipientId]);
+        fab_audit($pdo, 'user', (int) $adminContext['user_id'], 'recipient.update', ['recipient_id' => $recipientId]);
 
         Response::ok();
 
     case 'POST /admin/recipient/rotate-token':
-        $partnerId = Auth::requirePartnerId();
+        $adminContext = Auth::requireAdminContext();
         Auth::requireWritableSession();
         $input = fab_json_input();
         $recipientId = (int) ($input['recipient_id'] ?? 0);
@@ -570,18 +751,148 @@ switch ($method . ' ' . $path) {
             throw new HttpException(422, 'recipient_id is required.');
         }
 
-        fab_assert_partner_owns_recipient($pdo, $partnerId, $recipientId);
+        fab_assert_admin_can_access_recipient($pdo, $adminContext, $recipientId);
 
         $tokenService->revokeActiveTokens($recipientId);
         $tokenData = $tokenService->createForRecipient($recipientId);
 
-        fab_audit($pdo, 'partner', $partnerId, 'recipient.rotate_token', ['recipient_id' => $recipientId]);
+        fab_audit($pdo, 'user', (int) $adminContext['user_id'], 'recipient.rotate_token', ['recipient_id' => $recipientId]);
 
         Response::ok([
             'recipient_id' => $recipientId,
             'token' => $tokenData['token'],
             'code_short' => $tokenData['code_short'],
         ]);
+
+    case 'GET /admin/users':
+        $adminContext = Auth::requireAdminContext();
+
+        if ($adminContext['role'] !== 'admin_owner') {
+            throw new HttpException(403, 'Only owner admin can view admin users.');
+        }
+
+        $stmt = $pdo->query(
+            'SELECT u.id, u.partner_id, p.name AS partner_name, u.email, u.display_name, u.role, u.status, u.created_at, u.last_login_at
+             FROM users u
+             LEFT JOIN partners p ON p.id = u.partner_id
+             WHERE u.role IN ("admin_owner", "admin_outreach", "admin_demo")
+             ORDER BY u.created_at DESC'
+        );
+
+        Response::ok([
+            'users' => $stmt->fetchAll(),
+        ]);
+
+    case 'POST /admin/user/create':
+        $adminContext = Auth::requireAdminContext();
+        Auth::requireWritableSession();
+
+        if ($adminContext['role'] !== 'admin_owner') {
+            throw new HttpException(403, 'Only owner admin can create admin users.');
+        }
+
+        $input = fab_json_input();
+
+        $email = fab_required_email((string) ($input['email'] ?? ''));
+        $password = (string) ($input['password'] ?? '');
+        $displayName = trim((string) ($input['display_name'] ?? ''));
+        $role = trim((string) ($input['role'] ?? 'admin_outreach'));
+        $partnerId = isset($input['partner_id']) ? (int) $input['partner_id'] : null;
+
+        if (!in_array($role, ['admin_outreach', 'admin_demo', 'admin_owner'], true)) {
+            throw new HttpException(422, 'role must be admin_outreach, admin_demo, or admin_owner.');
+        }
+
+        if (strlen($password) < 8) {
+            throw new HttpException(422, 'Password must be at least 8 characters.');
+        }
+
+        if ($displayName === '') {
+            $displayName = strstr($email, '@', true) ?: 'Admin User';
+        }
+
+        if ($role !== 'admin_owner') {
+            if (!is_int($partnerId) || $partnerId <= 0) {
+                throw new HttpException(422, 'partner_id is required for outreach/demo admin roles.');
+            }
+            fab_require_partner_exists($pdo, $partnerId);
+        } else {
+            $partnerId = null;
+        }
+
+        $stmt = $pdo->prepare('SELECT id FROM users WHERE email = :email LIMIT 1');
+        $stmt->execute(['email' => $email]);
+        if ($stmt->fetch()) {
+            throw new HttpException(409, 'Email is already in use.');
+        }
+
+        $insert = $pdo->prepare(
+            'INSERT INTO users (partner_id, email, password_hash, display_name, role, status, created_at)
+             VALUES (:partner_id, :email, :password_hash, :display_name, :role, :status, UTC_TIMESTAMP())'
+        );
+        $insert->execute([
+            'partner_id' => $partnerId,
+            'email' => $email,
+            'password_hash' => password_hash($password, PASSWORD_BCRYPT),
+            'display_name' => $displayName,
+            'role' => $role,
+            'status' => 'active',
+        ]);
+
+        $newUserId = (int) $pdo->lastInsertId();
+
+        fab_audit($pdo, 'user', (int) $adminContext['user_id'], 'admin.user.create', ['user_id' => $newUserId, 'role' => $role]);
+
+        Response::ok([
+            'user_id' => $newUserId,
+        ], 201);
+
+    case 'POST /admin/user/update-status':
+        $adminContext = Auth::requireAdminContext();
+        Auth::requireWritableSession();
+
+        if ($adminContext['role'] !== 'admin_owner') {
+            throw new HttpException(403, 'Only owner admin can update admin users.');
+        }
+
+        $input = fab_json_input();
+        $userId = (int) ($input['user_id'] ?? 0);
+        $status = trim((string) ($input['status'] ?? ''));
+
+        if ($userId <= 0) {
+            throw new HttpException(422, 'user_id is required.');
+        }
+
+        if (!in_array($status, ['active', 'disabled'], true)) {
+            throw new HttpException(422, 'status must be active or disabled.');
+        }
+
+        $targetStmt = $pdo->prepare('SELECT id, role FROM users WHERE id = :id LIMIT 1');
+        $targetStmt->execute(['id' => $userId]);
+        $target = $targetStmt->fetch();
+        if (!$target) {
+            throw new HttpException(404, 'User not found.');
+        }
+
+        if ($status === 'disabled' && (string) $target['role'] === 'admin_owner') {
+            $countStmt = $pdo->query('SELECT COUNT(*) AS total FROM users WHERE role = "admin_owner" AND status = "active"');
+            $count = (int) (($countStmt->fetch()['total'] ?? 0));
+            if ($count <= 1) {
+                throw new HttpException(422, 'At least one active owner admin is required.');
+            }
+        }
+
+        $pdo->prepare('UPDATE users SET status = :status WHERE id = :id')->execute([
+            'status' => $status,
+            'id' => $userId,
+        ]);
+
+        fab_audit($pdo, 'user', (int) $adminContext['user_id'], 'admin.user.update_status', [
+            'target_user_id' => $userId,
+            'status' => $status,
+        ]);
+
+        Response::ok();
 
     default:
         Response::error('Route not found.', 404, ['path' => $path, 'method' => $method]);
@@ -696,17 +1007,44 @@ function fab_require_active_recipient(PDO $pdo, int $recipientId): void
     }
 }
 
-function fab_assert_partner_owns_recipient(PDO $pdo, int $partnerId, int $recipientId): void
+function fab_assert_admin_can_access_recipient(PDO $pdo, array $adminContext, int $recipientId): array
 {
-    $stmt = $pdo->prepare('SELECT id FROM recipients WHERE id = :id AND partner_id = :partner_id LIMIT 1');
-    $stmt->execute([
-        'id' => $recipientId,
-        'partner_id' => $partnerId,
-    ]);
+    $stmt = $pdo->prepare('SELECT id, partner_id FROM recipients WHERE id = :id LIMIT 1');
+    $stmt->execute(['id' => $recipientId]);
+    $recipient = $stmt->fetch();
 
-    if (!$stmt->fetch()) {
-        throw new HttpException(404, 'Recipient not found for this partner.');
+    if (!$recipient) {
+        throw new HttpException(404, 'Recipient not found.');
     }
+
+    if (!Auth::canManageAllPartners($adminContext)) {
+        $partnerId = $adminContext['partner_id'] ?? null;
+        if (!is_int($partnerId) || $partnerId !== (int) $recipient['partner_id']) {
+            throw new HttpException(403, 'This admin cannot access that recipient.');
+        }
+    }
+
+    return $recipient;
+}
+
+function fab_resolve_target_partner_id(PDO $pdo, array $adminContext, mixed $inputPartnerId, int $defaultPartnerId): int
+{
+    if (Auth::canManageAllPartners($adminContext)) {
+        $partnerId = (int) ($inputPartnerId ?? 0);
+        if ($partnerId <= 0) {
+            $partnerId = $defaultPartnerId;
+        }
+
+        fab_require_partner_exists($pdo, $partnerId);
+        return $partnerId;
+    }
+
+    $partnerId = $adminContext['partner_id'] ?? null;
+    if (!is_int($partnerId) || $partnerId <= 0) {
+        throw new HttpException(403, 'Partner scope is required for this admin.');
+    }
+
+    return $partnerId;
 }
 
 function fab_audit(PDO $pdo, string $actorType, int $actorId, string $action, array $meta): void
@@ -723,22 +1061,41 @@ function fab_audit(PDO $pdo, string $actorType, int $actorId, string $action, ar
     ]);
 }
 
-function fab_create_or_get_donor(PDO $pdo, ?string $email): ?int
+function fab_create_or_get_donor(PDO $pdo, ?string $email, ?int $userId = null): ?int
 {
-    if ($email === null || $email === '') {
+    if ($userId !== null) {
+        $stmt = $pdo->prepare('SELECT id FROM donors WHERE user_id = :user_id LIMIT 1');
+        $stmt->execute(['user_id' => $userId]);
+        $row = $stmt->fetch();
+        if ($row) {
+            return (int) $row['id'];
+        }
+    }
+
+    if ($email !== null && $email !== '') {
+        $stmt = $pdo->prepare('SELECT id, user_id FROM donors WHERE email = :email LIMIT 1');
+        $stmt->execute(['email' => $email]);
+        $row = $stmt->fetch();
+        if ($row) {
+            if ($userId !== null && !isset($row['user_id'])) {
+                $pdo->prepare('UPDATE donors SET user_id = :user_id WHERE id = :id')->execute([
+                    'user_id' => $userId,
+                    'id' => $row['id'],
+                ]);
+            }
+            return (int) $row['id'];
+        }
+    }
+
+    if ($userId === null && ($email === null || $email === '')) {
         return null;
     }
 
-    $stmt = $pdo->prepare('SELECT id FROM donors WHERE email = :email LIMIT 1');
-    $stmt->execute(['email' => $email]);
-    $row = $stmt->fetch();
-
-    if ($row) {
-        return (int) $row['id'];
-    }
-
-    $insert = $pdo->prepare('INSERT INTO donors (email, created_at) VALUES (:email, UTC_TIMESTAMP())');
-    $insert->execute(['email' => $email]);
+    $insert = $pdo->prepare('INSERT INTO donors (user_id, email, created_at) VALUES (:user_id, :email, UTC_TIMESTAMP())');
+    $insert->execute([
+        'user_id' => $userId,
+        'email' => $email,
+    ]);
 
     return (int) $pdo->lastInsertId();
 }
@@ -750,6 +1107,16 @@ function fab_require_partner_exists(PDO $pdo, int $partnerId): void
     if (!$stmt->fetch()) {
         throw new HttpException(500, 'Default partner is not configured.');
     }
+}
+
+function fab_required_email(string $value): string
+{
+    $email = strtolower(trim($value));
+    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        throw new HttpException(422, 'A valid email is required.');
+    }
+
+    return $email;
 }
 
 function fab_optional_email(mixed $value): ?string
@@ -808,8 +1175,8 @@ function fab_optional_coordinate(mixed $value, float $min, float $max, string $f
 
 function fab_normalize_recipient_row(array $row): array
 {
-    foreach (['id', 'total_received_cents', 'supporters_count'] as $intField) {
-        if (array_key_exists($intField, $row) && $row[$intField] !== null) {
+    foreach (['id', 'partner_id', 'user_id', 'total_received_cents', 'supporters_count'] as $intField) {
+        if (array_key_exists($intField, $row) && $row[$intField] !== null && $row[$intField] !== '') {
             $row[$intField] = (int) $row[$intField];
         }
     }
@@ -823,4 +1190,27 @@ function fab_normalize_recipient_row(array $row): array
     }
 
     return $row;
+}
+
+function fab_create_member_user(PDO $pdo, string $email, string $password, string $displayName): int
+{
+    $stmt = $pdo->prepare('SELECT id FROM users WHERE email = :email LIMIT 1');
+    $stmt->execute(['email' => $email]);
+    if ($stmt->fetch()) {
+        throw new HttpException(409, 'Email is already in use.');
+    }
+
+    $insert = $pdo->prepare(
+        'INSERT INTO users (partner_id, email, password_hash, display_name, role, status, created_at)
+         VALUES (NULL, :email, :password_hash, :display_name, :role, :status, UTC_TIMESTAMP())'
+    );
+    $insert->execute([
+        'email' => $email,
+        'password_hash' => password_hash($password, PASSWORD_BCRYPT),
+        'display_name' => $displayName,
+        'role' => 'member',
+        'status' => 'active',
+    ]);
+
+    return (int) $pdo->lastInsertId();
 }

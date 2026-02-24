@@ -64,13 +64,16 @@ If you already have an existing DB from earlier versions, run this migration onc
 
 ```bash
 mysql -u <user> -p <database> < db/migrations/2026-02-24-tucson-onboarding.sql
+mysql -u <user> -p <database> < db/migrations/2026-02-24-user-roles-hierarchy.sql
 ```
 
-Seeded dev login:
-- email: `admin@feedabum.local`
-- password: `DevPass!234`
+Seeded dev accounts:
+- owner admin: `owner@feedabum.local` / `OwnerPass!234`
+- outreach admin: `admin@feedabum.local` / `OutreachPass!234`
+- demo admin (read-only when enabled): `demo@feedabum.local` / `DemoPass!234`
+- member user (donor/panhandler): `member@feedabum.local` / `MemberPass!234`
 
-Change this password immediately outside dev.
+Change all seeded passwords immediately outside dev.
 
 Seeded recipient test values:
 - short code: `FAB1234`
@@ -98,7 +101,7 @@ Important:
 
 Demo toggle keys:
 - `DEMO_LOGIN_ENABLED=true|false`
-- `DEMO_LOGIN_EMAIL=admin@feedabum.local`
+- `DEMO_LOGIN_EMAIL=demo@feedabum.local`
 
 When demo login is enabled, that demo account is read-only in admin endpoints.
 
@@ -200,6 +203,10 @@ Default `/api` makes production work on same domain without CORS setup. For Tucs
 
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
+- `POST /api/user/register`
+- `POST /api/user/login`
+- `POST /api/user/logout`
+- `GET /api/user/me`
 - `GET /api/recipient/by-token?token=...`
 - `GET /api/recipient/by-code?code=...`
 - `POST /api/recipient/signup`
@@ -210,3 +217,6 @@ Default `/api` makes production work on same domain without CORS setup. For Tucs
 - `POST /api/admin/recipient/create`
 - `POST /api/admin/recipient/update`
 - `POST /api/admin/recipient/rotate-token`
+- `GET /api/admin/users` (owner)
+- `POST /api/admin/user/create` (owner)
+- `POST /api/admin/user/update-status` (owner)

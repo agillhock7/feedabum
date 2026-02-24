@@ -34,5 +34,5 @@ return [
 
     // Demo admin login toggle (read-only mode if used)
     'DEMO_LOGIN_ENABLED' => false,
-    'DEMO_LOGIN_EMAIL' => 'admin@feedabum.local',
+    'DEMO_LOGIN_EMAIL' => 'demo@feedabum.local',
 ];

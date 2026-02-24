@@ -2,6 +2,10 @@
   <main class="page-shell fade-up">
     <section class="hero card-warm">
       <div>
+        <div class="brand-row">
+          <img src="/branding/fab-logo-mark.svg" alt="Feed A Bum logo" class="mark" />
+          <img src="/branding/fab-wordmark.svg" alt="Feed A Bum" class="wordmark" />
+        </div>
         <h1>Feed a Bum</h1>
         <p class="section-subtitle">
           Hyperlocal micro-giving for verified neighbors. Scan, verify, and donate in under a minute.
@@ -34,6 +38,10 @@
           <p>One-time + recurring</p>
         </article>
       </aside>
+    </section>
+
+    <section class="hero-graphic card">
+      <img src="/branding/fab-pattern.svg" alt="Feed A Bum visual pattern" />
     </section>
 
     <section class="grid-layout">
@@ -138,6 +146,23 @@ function focusCodeInput() {
   margin-bottom: 1rem;
 }
 
+.brand-row {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.mark {
+  width: 60px;
+  height: 60px;
+  border-radius: 0.8rem;
+}
+
+.wordmark {
+  width: min(100%, 360px);
+  border-radius: 0.55rem;
+}
+
 h1 {
   margin: 0;
   font-size: clamp(1.8rem, 2vw, 2.3rem);
@@ -164,6 +189,18 @@ h1 {
 
 .signup-link {
   font-weight: 600;
+}
+
+.hero-graphic {
+  padding: 0;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.hero-graphic img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .grid-layout {

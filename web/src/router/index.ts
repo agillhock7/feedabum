@@ -25,9 +25,9 @@ router.beforeEach(async (to) => {
   }
 
   const auth = useAuthStore()
-  const partner = await auth.checkSession()
+  const admin = await auth.checkSession()
 
-  if (!partner) {
+  if (!admin) {
     return { name: 'admin-login' }
   }
 

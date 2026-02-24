@@ -41,6 +41,7 @@ That path is in the cPanel git checkout. Deployment copy then syncs it to runtim
 
 - Set `DEMO_LOGIN_ENABLED=true` to allow demo admin login.
 - Set `DEMO_LOGIN_ENABLED=false` to disable demo admin login immediately.
+- Set `DEMO_LOGIN_EMAIL=demo@feedabum.local` (or your chosen demo admin email).
 - Demo sessions are read-only by design (no create/update/rotate writes).
 
 ## 4) Test DB connection

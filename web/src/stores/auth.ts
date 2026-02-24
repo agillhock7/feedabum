@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 import { api } from '../services/api'
-import type { Partner } from '../types'
+import type { AdminUser } from '../types'
 
 interface State {
-  partner: Partner | null
+  admin: AdminUser | null
   isDemo: boolean
   demoLoginEnabled: boolean
   demoLoginEmail: string
@@ -12,34 +12,37 @@ interface State {
 
 export const useAuthStore = defineStore('auth', {
   state: (): State => ({
-    partner: null,
+    admin: null,
     isDemo: false,
     demoLoginEnabled: false,
-    demoLoginEmail: 'admin@feedabum.local',
+    demoLoginEmail: 'demo@feedabum.local',
     sessionChecked: false
   }),
   getters: {
-    isAuthenticated: (state) => state.partner !== null
+    isAuthenticated: (state) => state.admin !== null
   },
   actions: {
     async login(email: string, password: string) {
       const result = await api.post<{
         ok: true
-        partner: Partner
+        admin: AdminUser
         is_demo: boolean
         demo_login_enabled: boolean
       }>('/auth/login', { email, password })
-      this.partner = result.partner
+
+      this.admin = result.admin
       this.isDemo = Boolean(result.is_demo)
       this.demoLoginEnabled = Boolean(result.demo_login_enabled)
       this.sessionChecked = true
     },
+
     async logout() {
       await api.post('/auth/logout', {})
-      this.partner = null
+      this.admin = null
       this.isDemo = false
       this.sessionChecked = true
     },
+
     async loadPublicSettings() {
       try {
         const result = await api.get<{
@@ -48,35 +51,37 @@ export const useAuthStore = defineStore('auth', {
           demo_login_email?: string
         }>('/')
         this.demoLoginEnabled = Boolean(result.demo_login_enabled)
-        this.demoLoginEmail = result.demo_login_email || 'admin@feedabum.local'
+        this.demoLoginEmail = result.demo_login_email || 'demo@feedabum.local'
       } catch {
         // Keep defaults if API metadata is unavailable.
       }
     },
+
     async checkSession() {
-      if (this.sessionChecked && this.partner) {
-        return this.partner
+      if (this.sessionChecked && this.admin) {
+        return this.admin
       }
 
       try {
         const result = await api.get<{
           ok: true
-          partner: Partner | null
+          admin: AdminUser | null
           is_demo?: boolean
           demo_login_enabled?: boolean
         }>('/admin/recipients')
-        this.partner = result.partner
+
+        this.admin = result.admin
         this.isDemo = Boolean(result.is_demo)
         if (typeof result.demo_login_enabled === 'boolean') {
           this.demoLoginEnabled = result.demo_login_enabled
         }
       } catch {
-        this.partner = null
+        this.admin = null
         this.isDemo = false
       }
 
       this.sessionChecked = true
-      return this.partner
+      return this.admin
     }
   }
 })

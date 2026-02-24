@@ -2,6 +2,7 @@
   <main class="page-shell fade-up">
     <section class="card-warm wrap">
       <header>
+        <img src="/branding/fab-wordmark.svg" alt="Feed A Bum" class="wordmark" />
         <h1>Self Sign-Up (Tucson Launch)</h1>
         <p class="section-subtitle">
           Sign up free, set your zone on the map, and get your QR donation code instantly.
@@ -41,8 +42,13 @@
 
         <div class="contact-grid">
           <label>
-            Contact email (optional)
-            <input v-model="form.contact_email" type="email" maxlength="191" placeholder="you@example.com" />
+            Account email
+            <input v-model="form.contact_email" type="email" maxlength="191" placeholder="you@example.com" required />
+          </label>
+
+          <label>
+            Account password
+            <input v-model="form.account_password" type="password" minlength="8" placeholder="At least 8 characters" required />
           </label>
 
           <label>
@@ -61,7 +67,7 @@
 
       <section v-else class="result card fade-up">
         <h2>You're live in Feed a Bum</h2>
-        <p class="section-subtitle">Share your code or QR so local donors can support you directly.</p>
+        <p class="section-subtitle">Your member account and recipient profile were created. Share your code or QR so local donors can support you directly.</p>
 
         <div class="kpi-grid">
           <article class="kpi">
@@ -117,6 +123,7 @@ const form = reactive({
   zone: '',
   city: 'Tucson, AZ',
   contact_email: '',
+  account_password: '',
   contact_phone: ''
 })
 
@@ -194,6 +201,12 @@ function openRecipient() {
 <style scoped>
 .wrap {
   padding: 1.1rem;
+}
+
+.wordmark {
+  width: min(100%, 340px);
+  border-radius: 0.55rem;
+  margin-bottom: 0.65rem;
 }
 
 h1 {
