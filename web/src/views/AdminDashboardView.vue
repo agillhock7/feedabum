@@ -3,7 +3,7 @@
     <section class="card-warm shell">
       <header class="heading-row">
         <div>
-          <h1>Partner Dashboard</h1>
+          <h1>Tucson Operations Dashboard</h1>
           <p class="section-subtitle" v-if="partner">Signed in as {{ partner.name }} ({{ partner.email }})</p>
         </div>
         <button @click="logout">Logout</button>
@@ -11,91 +11,158 @@
 
       <section class="kpi-grid summary">
         <article class="kpi">
-          <h4>Recipients</h4>
-          <p>{{ recipients.length }}</p>
+          <h4>Total recipients</h4>
+          <p>{{ summary.total_recipients }}</p>
         </article>
         <article class="kpi">
-          <h4>Active recipients</h4>
-          <p>{{ activeCount }}</p>
+          <h4>Self signups</h4>
+          <p>{{ summary.self_signup_count }}</p>
         </article>
         <article class="kpi">
-          <h4>Total wallet credited</h4>
-          <p>${{ totalWalletUsd }}</p>
+          <h4>New onboarding</h4>
+          <p>{{ summary.new_onboarding_count }}</p>
         </article>
       </section>
 
-      <form class="card create-form" @submit.prevent="createRecipient">
-        <h2>Create Recipient</h2>
-        <label>Nickname <input v-model="createForm.nickname" required /></label>
-        <label>Story <textarea v-model="createForm.story" required rows="2"></textarea></label>
-        <label>Needs <textarea v-model="createForm.needs" required rows="2"></textarea></label>
-        <label>Zone <input v-model="createForm.zone" required /></label>
-        <label class="inline"><input v-model="createForm.verified" type="checkbox" /> Verified now</label>
-        <button class="btn-primary" type="submit" :disabled="busy">Create Recipient</button>
-      </form>
+      <section class="card create-form">
+        <header class="row-head">
+          <h2>Create Recipient (Admin Intake)</h2>
+          <button type="button" @click="showCreate = !showCreate">{{ showCreate ? 'Hide' : 'Show' }}</button>
+        </header>
+
+        <form v-if="showCreate" class="form-grid" @submit.prevent="createRecipient">
+          <label>Nickname <input v-model="createForm.nickname" required /></label>
+          <label>Zone <input v-model="createForm.zone" required placeholder="Downtown Tucson" /></label>
+          <label>City <input v-model="createForm.city" required /></label>
+          <label>Contact email <input v-model="createForm.contact_email" type="email" /></label>
+          <label>Contact phone <input v-model="createForm.contact_phone" /></label>
+
+          <label class="full">Story <textarea v-model="createForm.story" required rows="2"></textarea></label>
+          <label class="full">Needs <textarea v-model="createForm.needs" required rows="2"></textarea></label>
+
+          <ZoneMapPicker v-model="createCoordinates" :height="250" :interactive="true" class="full" />
+
+          <label class="inline"><input v-model="createForm.verified" type="checkbox" /> Mark verified now</label>
+          <button class="btn-primary" type="submit" :disabled="busy">Create Recipient</button>
+        </form>
+      </section>
 
       <p v-if="tokenNotice" class="token-notice">{{ tokenNotice }}</p>
       <p v-if="error" class="error-text">{{ error }}</p>
 
-      <section v-for="item in recipients" :key="item.id" class="card recipient-card">
-        <header class="recipient-header">
-          <div>
-            <h3>{{ item.nickname }}</h3>
-            <p class="section-subtitle">Zone: {{ item.zone }} | Code: {{ item.code_short || 'none' }}</p>
-          </div>
-          <span class="chip">{{ item.status }}</span>
-        </header>
+      <section class="manage-grid">
+        <section class="card roster">
+          <header class="roster-controls">
+            <h2>Recipient Pipeline</h2>
+            <input v-model="search" placeholder="Search name, zone, city" />
+            <select v-model="filter">
+              <option value="all">All</option>
+              <option value="new">Onboarding new</option>
+              <option value="verified">Verified</option>
+              <option value="self">Self signup</option>
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+            </select>
+          </header>
 
-        <section class="recipient-kpis">
-          <article>
-            <h4>Received</h4>
-            <p>${{ (Number(item.total_received_cents) / 100).toFixed(2) }}</p>
-          </article>
-          <article>
-            <h4>Supporters</h4>
-            <p>{{ item.supporters_count }}</p>
-          </article>
-          <article>
-            <h4>Verified</h4>
-            <p>{{ item.verified_at ? 'yes' : 'no' }}</p>
-          </article>
+          <div class="roster-list">
+            <button
+              v-for="item in filteredRecipients"
+              :key="item.id"
+              type="button"
+              class="recipient-item"
+              :class="{ active: selectedRecipient?.id === item.id }"
+              @click="selectRecipient(item.id)"
+            >
+              <div>
+                <strong>{{ item.nickname }}</strong>
+                <p>{{ item.zone }}, {{ item.city }}</p>
+              </div>
+              <div class="chip-stack">
+                <span class="chip">{{ item.signup_source }}</span>
+                <span class="chip">{{ item.onboarding_status }}</span>
+                <span class="chip">{{ item.status }}</span>
+              </div>
+            </button>
+            <p v-if="filteredRecipients.length === 0" class="section-subtitle">No recipients match current filters.</p>
+          </div>
         </section>
 
-        <label>Nickname <input v-model="item.nickname" /></label>
-        <label>Story <textarea v-model="item.story" rows="2"></textarea></label>
-        <label>Needs <textarea v-model="item.needs" rows="2"></textarea></label>
-        <label>Zone <input v-model="item.zone" /></label>
+        <section class="card editor" v-if="selectedRecipient">
+          <header class="row-head">
+            <h2>Edit {{ selectedRecipient.nickname }}</h2>
+            <span class="chip">ID #{{ selectedRecipient.id }}</span>
+          </header>
 
-        <div class="controls">
-          <label>
-            Status
-            <select v-model="item.status">
-              <option value="active">active</option>
-              <option value="suspended">suspended</option>
-            </select>
-          </label>
+          <div class="recipient-kpis">
+            <article>
+              <h4>Received</h4>
+              <p>${{ (Number(selectedRecipient.total_received_cents) / 100).toFixed(2) }}</p>
+            </article>
+            <article>
+              <h4>Supporters</h4>
+              <p>{{ selectedRecipient.supporters_count }}</p>
+            </article>
+            <article>
+              <h4>Code</h4>
+              <p>{{ selectedRecipient.code_short || 'none' }}</p>
+            </article>
+          </div>
 
-          <label class="inline">
-            <input :checked="Boolean(item.verified_at)" type="checkbox" @change="setVerified(item, $event)" />
-            Verified
-          </label>
-        </div>
+          <form class="form-grid" @submit.prevent="saveSelected">
+            <label>Nickname <input v-model="editor.nickname" required /></label>
+            <label>Zone <input v-model="editor.zone" required /></label>
+            <label>City <input v-model="editor.city" required /></label>
+            <label>Contact email <input v-model="editor.contact_email" type="email" /></label>
+            <label>Contact phone <input v-model="editor.contact_phone" /></label>
 
-        <div class="row-actions">
-          <button class="btn-primary" @click="updateRecipient(item)" :disabled="busy">Save</button>
-          <button @click="rotateToken(item.id)" :disabled="busy">Rotate Token</button>
-        </div>
+            <label>
+              Status
+              <select v-model="editor.status">
+                <option value="active">active</option>
+                <option value="suspended">suspended</option>
+              </select>
+            </label>
+
+            <label>
+              Onboarding
+              <select v-model="editor.onboarding_status">
+                <option value="new">new</option>
+                <option value="reviewed">reviewed</option>
+                <option value="verified">verified</option>
+              </select>
+            </label>
+
+            <label class="inline"><input v-model="editorVerified" type="checkbox" /> Verified badge</label>
+
+            <label class="full">Story <textarea v-model="editor.story" rows="2" required></textarea></label>
+            <label class="full">Needs <textarea v-model="editor.needs" rows="2" required></textarea></label>
+
+            <ZoneMapPicker v-model="editorCoordinates" :height="240" :interactive="true" class="full" />
+
+            <div class="actions full">
+              <button class="btn-primary" :disabled="busy" type="submit">Save Changes</button>
+              <button type="button" :disabled="busy" @click="rotateToken(selectedRecipient.id)">Rotate Token</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card editor empty" v-else>
+          <h2>Select a recipient to edit</h2>
+          <p class="section-subtitle">Choose from the pipeline list to manage onboarding and zone map data.</p>
+        </section>
       </section>
     </section>
   </main>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../services/api'
 import type { AdminRecipient, Partner } from '../types'
 import { useAuthStore } from '../stores/auth'
+import ZoneMapPicker from '../components/ZoneMapPicker.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -104,30 +171,163 @@ const recipients = ref<AdminRecipient[]>([])
 const busy = ref(false)
 const error = ref('')
 const tokenNotice = ref('')
+const search = ref('')
+const filter = ref<'all' | 'new' | 'verified' | 'self' | 'active' | 'suspended'>('all')
+const showCreate = ref(true)
+const selectedId = ref<number | null>(null)
+
+const summary = ref({
+  total_recipients: 0,
+  active_recipients: 0,
+  self_signup_count: 0,
+  new_onboarding_count: 0
+})
 
 const createForm = ref({
   nickname: '',
   story: '',
   needs: '',
   zone: '',
+  city: 'Tucson, AZ',
+  contact_email: '',
+  contact_phone: '',
   verified: true
 })
 
-const partner = computed(() => auth.partner)
-const activeCount = computed(() => recipients.value.filter((item) => item.status === 'active').length)
-const totalWalletUsd = computed(() => {
-  const cents = recipients.value.reduce((sum, item) => sum + Number(item.total_received_cents || 0), 0)
-  return (cents / 100).toFixed(2)
+const createCoordinates = ref<{ lat: number | null; lng: number | null }>({
+  lat: 32.2226,
+  lng: -110.9747
 })
+
+const editor = reactive<{
+  id: number
+  nickname: string
+  story: string
+  needs: string
+  zone: string
+  city: string
+  status: 'active' | 'suspended'
+  onboarding_status: 'new' | 'reviewed' | 'verified'
+  contact_email: string
+  contact_phone: string
+  verified_at: string | null
+}>({
+  id: 0,
+  nickname: '',
+  story: '',
+  needs: '',
+  zone: '',
+  city: 'Tucson, AZ',
+  status: 'active',
+  onboarding_status: 'new',
+  contact_email: '',
+  contact_phone: '',
+  verified_at: null
+})
+
+const editorCoordinates = ref<{ lat: number | null; lng: number | null }>({ lat: null, lng: null })
+
+const partner = computed(() => auth.partner)
+const selectedRecipient = computed(() => recipients.value.find((item) => item.id === selectedId.value) || null)
+
+const filteredRecipients = computed(() => {
+  const query = search.value.trim().toLowerCase()
+
+  return recipients.value.filter((item) => {
+    if (filter.value === 'new' && item.onboarding_status !== 'new') {
+      return false
+    }
+    if (filter.value === 'verified' && !item.verified_at) {
+      return false
+    }
+    if (filter.value === 'self' && item.signup_source !== 'self') {
+      return false
+    }
+    if (filter.value === 'active' && item.status !== 'active') {
+      return false
+    }
+    if (filter.value === 'suspended' && item.status !== 'suspended') {
+      return false
+    }
+
+    if (!query) {
+      return true
+    }
+
+    return [item.nickname, item.zone, item.city].some((field) => field.toLowerCase().includes(query))
+  })
+})
+
+const editorVerified = computed({
+  get: () => editor.verified_at !== null,
+  set: (value: boolean) => {
+    editor.verified_at = value ? new Date().toISOString() : null
+    if (value) {
+      editor.onboarding_status = 'verified'
+    } else if (editor.onboarding_status === 'verified') {
+      editor.onboarding_status = 'reviewed'
+    }
+  }
+})
+
+function syncEditor(recipient: AdminRecipient) {
+  editor.id = recipient.id
+  editor.nickname = recipient.nickname
+  editor.story = recipient.story
+  editor.needs = recipient.needs
+  editor.zone = recipient.zone
+  editor.city = recipient.city
+  editor.status = recipient.status
+  editor.onboarding_status = recipient.onboarding_status
+  editor.contact_email = recipient.contact_email || ''
+  editor.contact_phone = recipient.contact_phone || ''
+  editor.verified_at = recipient.verified_at
+  editorCoordinates.value = {
+    lat: recipient.latitude,
+    lng: recipient.longitude
+  }
+}
+
+function selectRecipient(recipientId: number) {
+  selectedId.value = recipientId
+  const recipient = recipients.value.find((item) => item.id === recipientId)
+  if (recipient) {
+    syncEditor(recipient)
+  }
+}
 
 async function loadRecipients() {
   busy.value = true
   error.value = ''
 
   try {
-    const result = await api.get<{ ok: true; partner: Partner | null; recipients: AdminRecipient[] }>('/admin/recipients')
+    const result = await api.get<{
+      ok: true
+      partner: Partner | null
+      summary: {
+        total_recipients: number
+        active_recipients: number
+        self_signup_count: number
+        new_onboarding_count: number
+      }
+      recipients: AdminRecipient[]
+    }>('/admin/recipients')
+
     auth.partner = result.partner
+    summary.value = {
+      total_recipients: Number(result.summary.total_recipients || 0),
+      active_recipients: Number(result.summary.active_recipients || 0),
+      self_signup_count: Number(result.summary.self_signup_count || 0),
+      new_onboarding_count: Number(result.summary.new_onboarding_count || 0)
+    }
+
     recipients.value = result.recipients
+    if (selectedId.value !== null) {
+      const selected = result.recipients.find((item) => item.id === selectedId.value)
+      if (selected) {
+        syncEditor(selected)
+      }
+    }
   } catch (err: any) {
     error.value = err?.message || 'Unable to load dashboard.'
     if (err?.status === 401) {
@@ -144,10 +344,26 @@ async function createRecipient() {
   tokenNotice.value = ''
 
   try {
-    const result = await api.post<{ ok: true; recipient_id: number; token: string; code_short: string }>('/admin/recipient/create', createForm.value)
+    const result = await api.post<{ ok: true; recipient_id: number; token: string; code_short: string }>('/admin/recipient/create', {
+      ...createForm.value,
+      latitude: createCoordinates.value.lat,
+      longitude: createCoordinates.value.lng
+    })
+
     tokenNotice.value = `New token for recipient #${result.recipient_id}: ${result.token} | short code: ${result.code_short}`
-    createForm.value = { nickname: '', story: '', needs: '', zone: '', verified: true }
+    createForm.value = {
+      nickname: '',
+      story: '',
+      needs: '',
+      zone: '',
+      city: 'Tucson, AZ',
+      contact_email: '',
+      contact_phone: '',
+      verified: true
+    }
+    createCoordinates.value = { lat: 32.2226, lng: -110.9747 }
     await loadRecipients()
+    selectRecipient(result.recipient_id)
   } catch (err: any) {
     error.value = err?.message || 'Unable to create recipient.'
   } finally {
@@ -155,21 +371,32 @@ async function createRecipient() {
   }
 }
 
-async function updateRecipient(item: AdminRecipient) {
+async function saveSelected() {
+  if (!selectedRecipient.value) {
+    return
+  }
+
   busy.value = true
   error.value = ''
   tokenNotice.value = ''
 
   try {
     await api.post('/admin/recipient/update', {
-      recipient_id: item.id,
-      nickname: item.nickname,
-      story: item.story,
-      needs: item.needs,
-      zone: item.zone,
-      status: item.status,
-      verified: Boolean(item.verified_at)
+      recipient_id: selectedRecipient.value.id,
+      nickname: editor.nickname,
+      story: editor.story,
+      needs: editor.needs,
+      zone: editor.zone,
+      city: editor.city,
+      status: editor.status,
+      onboarding_status: editor.onboarding_status,
+      verified: editor.verified_at !== null,
+      contact_email: editor.contact_email || null,
+      contact_phone: editor.contact_phone || null,
+      latitude: editorCoordinates.value.lat,
+      longitude: editorCoordinates.value.lng
     })
+
     await loadRecipients()
   } catch (err: any) {
     error.value = err?.message || 'Unable to update recipient.'
@@ -196,11 +423,6 @@ async function rotateToken(recipientId: number) {
   }
 }
 
-function setVerified(item: AdminRecipient, event: Event) {
-  const checked = (event.target as HTMLInputElement).checked
-  item.verified_at = checked ? new Date().toISOString() : null
-}
-
 async function logout() {
   await auth.logout()
   await router.push({ name: 'admin-login' })
@@ -216,7 +438,8 @@ onMounted(() => {
   padding: 1rem;
 }
 
-h1 {
+h1,
+h2 {
   margin: 0;
 }
 
@@ -227,20 +450,39 @@ h1 {
   align-items: start;
 }
 
-.summary {
-  margin-top: 0.95rem;
+.summary,
+.create-form,
+.manage-grid {
+  margin-top: 1rem;
+}
+
+.row-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  align-items: center;
 }
 
 .create-form,
-.recipient-card {
-  margin-top: 1rem;
-  padding: 0.9rem;
+.roster,
+.editor {
+  padding: 0.85rem;
+}
+
+.form-grid {
+  margin-top: 0.8rem;
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-grid .full {
+  grid-column: 1 / -1;
 }
 
 label {
   display: grid;
   gap: 0.25rem;
-  margin-bottom: 0.65rem;
 }
 
 .inline {
@@ -249,15 +491,45 @@ label {
   gap: 0.4rem;
 }
 
-.recipient-header {
+.manage-grid {
+  display: grid;
+  grid-template-columns: 0.85fr 1.15fr;
+  gap: 1rem;
+}
+
+.roster-controls {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.roster-list {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.recipient-item {
+  text-align: left;
   display: flex;
   justify-content: space-between;
   gap: 0.8rem;
   align-items: start;
 }
 
-.recipient-header h3 {
-  margin: 0;
+.recipient-item p {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.87rem;
+}
+
+.recipient-item.active {
+  border-color: #f78833;
+  background: #fff2e5;
+}
+
+.chip-stack {
+  display: grid;
+  gap: 0.25rem;
 }
 
 .recipient-kpis {
@@ -285,15 +557,15 @@ label {
   font-weight: 700;
 }
 
-.controls {
-  display: flex;
-  gap: 1rem;
-  align-items: end;
-}
-
-.row-actions {
+.actions {
   display: flex;
   gap: 0.6rem;
+}
+
+.empty {
+  display: grid;
+  place-content: center;
+  min-height: 16rem;
 }
 
 .token-notice {
@@ -305,15 +577,17 @@ label {
   margin-top: 0.8rem;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 980px) {
   .heading-row,
-  .controls,
-  .row-actions,
-  .recipient-header {
+  .row-head,
+  .actions,
+  .recipient-item {
     flex-direction: column;
     align-items: stretch;
   }
 
+  .manage-grid,
+  .form-grid,
   .recipient-kpis {
     grid-template-columns: 1fr;
   }

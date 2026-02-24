@@ -16,13 +16,23 @@ CREATE TABLE IF NOT EXISTS recipients (
     story TEXT NOT NULL,
     needs TEXT NOT NULL,
     zone VARCHAR(120) NOT NULL,
+    city VARCHAR(120) NOT NULL DEFAULT 'Tucson, AZ',
+    latitude DECIMAL(10,7) NULL,
+    longitude DECIMAL(10,7) NULL,
+    signup_source ENUM('admin', 'self') NOT NULL DEFAULT 'admin',
+    onboarding_status ENUM('new', 'reviewed', 'verified') NOT NULL DEFAULT 'verified',
+    contact_email VARCHAR(191) NULL,
+    contact_phone VARCHAR(40) NULL,
     verified_at DATETIME NULL,
     status ENUM('active', 'suspended') NOT NULL DEFAULT 'active',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_recipients_partner FOREIGN KEY (partner_id) REFERENCES partners (id) ON DELETE CASCADE,
     INDEX idx_recipients_partner (partner_id),
-    INDEX idx_recipients_status (status)
+    INDEX idx_recipients_status (status),
+    INDEX idx_recipients_city (city),
+    INDEX idx_recipients_onboarding_status (onboarding_status),
+    INDEX idx_recipients_coords (latitude, longitude)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS recipient_tokens (

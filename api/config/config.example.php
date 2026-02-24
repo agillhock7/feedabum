@@ -25,6 +25,10 @@ return [
     'RATE_LIMIT_DONATION_WINDOW' => 60,
     'RATE_LIMIT_LOGIN_MAX' => 10,
     'RATE_LIMIT_LOGIN_WINDOW' => 300,
+    'RATE_LIMIT_SIGNUP_MAX' => 6,
+    'RATE_LIMIT_SIGNUP_WINDOW' => 3600,
 
     'TOKEN_SIGNING_SECRET' => 'replace_with_long_random_secret',
+    'DEFAULT_PARTNER_ID' => 1,
+    'DEFAULT_CITY' => 'Tucson, AZ',
 ];

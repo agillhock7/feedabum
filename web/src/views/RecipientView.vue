@@ -18,6 +18,7 @@
         <p class="chip" v-if="recipient.verified_at">
           Verified by {{ recipient.verified_by_partner }} on {{ formatDate(recipient.verified_at) }}
         </p>
+        <p v-else class="chip">Community signup pending partner verification</p>
 
         <div class="kpi-grid">
           <article class="kpi">
@@ -55,6 +56,14 @@
         <article>
           <h2 class="section-title">Current Needs</h2>
           <p>{{ recipient.needs }}</p>
+        </article>
+
+        <article>
+          <h2 class="section-title">Location</h2>
+          <p>{{ recipient.zone }}, {{ recipient.city }}</p>
+          <p v-if="recipient.latitude !== null && recipient.longitude !== null">
+            {{ recipient.latitude.toFixed(5) }}, {{ recipient.longitude.toFixed(5) }}
+          </p>
         </article>
 
         <article v-if="cacheNotice" class="cache-note card-warm">

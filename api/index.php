@@ -99,6 +99,107 @@ switch ($method . ' ' . $path) {
 
         Response::ok(['recipient' => $recipient]);
 
+    case 'POST /recipient/signup':
+        $attempt = $throttle->hit('recipient:signup:' . fab_client_ip(), $config['RATE_LIMIT_SIGNUP_MAX'], $config['RATE_LIMIT_SIGNUP_WINDOW']);
+        if (!$attempt['allowed']) {
+            Response::error('Too many signup attempts.', 429, ['retry_after' => $attempt['retry_after']]);
+        }
+
+        $input = fab_json_input();
+
+        $nickname = trim((string) ($input['nickname'] ?? ''));
+        $story = trim((string) ($input['story'] ?? ''));
+        $needs = trim((string) ($input['needs'] ?? ''));
+        $zone = trim((string) ($input['zone'] ?? ''));
+        $city = trim((string) ($input['city'] ?? $config['DEFAULT_CITY']));
+        $contactEmail = fab_optional_email($input['contact_email'] ?? null);
+        $contactPhone = fab_optional_phone($input['contact_phone'] ?? null);
+        $latitude = fab_optional_coordinate($input['latitude'] ?? null, -90.0, 90.0, 'latitude');
+        $longitude = fab_optional_coordinate($input['longitude'] ?? null, -180.0, 180.0, 'longitude');
+        $partnerId = (int) $config['DEFAULT_PARTNER_ID'];
+
+        if ($nickname === '' || $story === '' || $needs === '' || $zone === '') {
+            throw new HttpException(422, 'nickname, story, needs, and zone are required.');
+        }
+
+        if ($city === '') {
+            $city = (string) $config['DEFAULT_CITY'];
+        }
+
+        fab_require_partner_exists($pdo, $partnerId);
+
+        $stmt = $pdo->prepare(
+            'INSERT INTO recipients (
+                partner_id,
+                nickname,
+                story,
+                needs,
+                zone,
+                city,
+                latitude,
+                longitude,
+                signup_source,
+                onboarding_status,
+                contact_email,
+                contact_phone,
+                verified_at,
+                status,
+                created_at,
+                updated_at
+             ) VALUES (
+                :partner_id,
+                :nickname,
+                :story,
+                :needs,
+                :zone,
+                :city,
+                :latitude,
+                :longitude,
+                :signup_source,
+                :onboarding_status,
+                :contact_email,
+                :contact_phone,
+                NULL,
+                :status,
+                UTC_TIMESTAMP(),
+                UTC_TIMESTAMP()
+             )'
+        );
+        $stmt->execute([
+            'partner_id' => $partnerId,
+            'nickname' => $nickname,
+            'story' => $story,
+            'needs' => $needs,
+            'zone' => $zone,
+            'city' => $city,
+            'latitude' => $latitude,
+            'longitude' => $longitude,
+            'signup_source' => 'self',
+            'onboarding_status' => 'new',
+            'contact_email' => $contactEmail,
+            'contact_phone' => $contactPhone,
+            'status' => 'active',
+        ]);
+
+        $recipientId = (int) $pdo->lastInsertId();
+        $tokenData = $tokenService->createForRecipient($recipientId);
+
+        fab_audit($pdo, 'recipient', $recipientId, 'recipient.self_signup', [
+            'signup_source' => 'self',
+            'city' => $city,
+            'zone' => $zone,
+        ]);
+
+        $recipientUrl = rtrim((string) $config['APP_BASE_URL'], '/') . '/recipient?token=' . urlencode($tokenData['token']);
+
+        Response::ok([
+            'recipient_id' => $recipientId,
+            'onboarding_status' => 'new',
+            'token' => $tokenData['token'],
+            'code_short' => $tokenData['code_short'],
+            'recipient_url' => $recipientUrl,
+        ], 201);
+
     case 'POST /donation/create-intent':
         $attempt = $throttle->hit('donation:intent:' . fab_client_ip(), $config['RATE_LIMIT_DONATION_MAX'], $config['RATE_LIMIT_DONATION_WINDOW']);
         if (!$attempt['allowed']) {
@@ -196,6 +297,13 @@ switch ($method . ' ' . $path) {
                 r.story,
                 r.needs,
                 r.zone,
+                r.city,
+                r.latitude,
+                r.longitude,
+                r.signup_source,
+                r.onboarding_status,
+                r.contact_email,
+                r.contact_phone,
                 r.verified_at,
                 r.status,
                 r.created_at,
@@ -227,12 +335,30 @@ switch ($method . ' ' . $path) {
              ORDER BY r.created_at DESC'
         );
         $stmt->execute(['partner_id' => $partnerId]);
-        $recipients = $stmt->fetchAll();
+        $recipients = array_map('fab_normalize_recipient_row', $stmt->fetchAll());
+
+        $summaryStmt = $pdo->prepare(
+            'SELECT
+                COUNT(*) AS total_recipients,
+                SUM(CASE WHEN status = "active" THEN 1 ELSE 0 END) AS active_recipients,
+                SUM(CASE WHEN signup_source = "self" THEN 1 ELSE 0 END) AS self_signup_count,
+                SUM(CASE WHEN onboarding_status = "new" THEN 1 ELSE 0 END) AS new_onboarding_count
+             FROM recipients
+             WHERE partner_id = :partner_id'
+        );
+        $summaryStmt->execute(['partner_id' => $partnerId]);
+        $summary = $summaryStmt->fetch() ?: [
+            'total_recipients' => 0,
+            'active_recipients' => 0,
+            'self_signup_count' => 0,
+            'new_onboarding_count' => 0,
+        ];
 
         $partner = Auth::currentPartner($pdo);
 
         Response::ok([
             'partner' => $partner,
+            'summary' => $summary,
             'recipients' => $recipients,
         ]);
 
@@ -244,6 +370,11 @@ switch ($method . ' ' . $path) {
         $story = trim((string) ($input['story'] ?? ''));
         $needs = trim((string) ($input['needs'] ?? ''));
         $zone = trim((string) ($input['zone'] ?? ''));
+        $city = trim((string) ($input['city'] ?? $config['DEFAULT_CITY']));
+        $latitude = fab_optional_coordinate($input['latitude'] ?? null, -90.0, 90.0, 'latitude');
+        $longitude = fab_optional_coordinate($input['longitude'] ?? null, -180.0, 180.0, 'longitude');
+        $contactEmail = fab_optional_email($input['contact_email'] ?? null);
+        $contactPhone = fab_optional_phone($input['contact_phone'] ?? null);
         $verified = (bool) ($input['verified'] ?? true);
 
         if ($nickname === '' || $story === '' || $needs === '' || $zone === '') {
@@ -252,10 +383,44 @@ switch ($method . ' ' . $path) {
 
         $status = 'active';
         $verifiedAt = $verified ? gmdate('Y-m-d H:i:s') : null;
+        $onboardingStatus = $verified ? 'verified' : 'reviewed';
 
         $stmt = $pdo->prepare(
-            'INSERT INTO recipients (partner_id, nickname, story, needs, zone, verified_at, status, created_at, updated_at)
-             VALUES (:partner_id, :nickname, :story, :needs, :zone, :verified_at, :status, UTC_TIMESTAMP(), UTC_TIMESTAMP())'
+            'INSERT INTO recipients (
+                partner_id,
+                nickname,
+                story,
+                needs,
+                zone,
+                city,
+                latitude,
+                longitude,
+                signup_source,
+                onboarding_status,
+                contact_email,
+                contact_phone,
+                verified_at,
+                status,
+                created_at,
+                updated_at
+             ) VALUES (
+                :partner_id,
+                :nickname,
+                :story,
+                :needs,
+                :zone,
+                :city,
+                :latitude,
+                :longitude,
+                :signup_source,
+                :onboarding_status,
+                :contact_email,
+                :contact_phone,
+                :verified_at,
+                :status,
+                UTC_TIMESTAMP(),
+                UTC_TIMESTAMP()
+             )'
         );
         $stmt->execute([
             'partner_id' => $partnerId,
@@ -263,6 +428,13 @@ switch ($method . ' ' . $path) {
             'story' => $story,
             'needs' => $needs,
             'zone' => $zone,
+            'city' => $city,
+            'latitude' => $latitude,
+            'longitude' => $longitude,
+            'signup_source' => 'admin',
+            'onboarding_status' => $onboardingStatus,
+            'contact_email' => $contactEmail,
+            'contact_phone' => $contactPhone,
             'verified_at' => $verifiedAt,
             'status' => $status,
         ]);
@@ -293,10 +465,25 @@ switch ($method . ' ' . $path) {
         $updates = [];
         $params = ['recipient_id' => $recipientId, 'partner_id' => $partnerId];
 
-        foreach (['nickname', 'story', 'needs', 'zone'] as $field) {
+        foreach (['nickname', 'story', 'needs', 'zone', 'city', 'contact_email', 'contact_phone'] as $field) {
             if (array_key_exists($field, $input)) {
                 $updates[] = $field . ' = :' . $field;
+                if ($field === 'contact_email') {
+                    $params[$field] = fab_optional_email($input[$field]);
+                    continue;
+                }
+                if ($field === 'contact_phone') {
+                    $params[$field] = fab_optional_phone($input[$field]);
+                    continue;
+                }
                 $params[$field] = trim((string) $input[$field]);
+            }
+        }
+
+        foreach (['latitude' => [-90.0, 90.0], 'longitude' => [-180.0, 180.0]] as $field => [$min, $max]) {
+            if (array_key_exists($field, $input)) {
+                $updates[] = $field . ' = :' . $field;
+                $params[$field] = fab_optional_coordinate($input[$field], $min, $max, $field);
             }
         }
 
@@ -309,12 +496,37 @@ switch ($method . ' ' . $path) {
             $params['status'] = $status;
         }
 
+        if (array_key_exists('onboarding_status', $input)) {
+            $onboardingStatus = trim((string) $input['onboarding_status']);
+            if (!in_array($onboardingStatus, ['new', 'reviewed', 'verified'], true)) {
+                throw new HttpException(422, 'onboarding_status must be new, reviewed, or verified.');
+            }
+            $updates[] = 'onboarding_status = :onboarding_status';
+            $params['onboarding_status'] = $onboardingStatus;
+
+            if (!array_key_exists('verified', $input)) {
+                if ($onboardingStatus === 'verified') {
+                    $updates[] = 'verified_at = COALESCE(verified_at, UTC_TIMESTAMP())';
+                } else {
+                    $updates[] = 'verified_at = NULL';
+                }
+            }
+        }
+
         if (array_key_exists('verified', $input)) {
             $verified = (bool) $input['verified'];
             if ($verified) {
                 $updates[] = 'verified_at = COALESCE(verified_at, UTC_TIMESTAMP())';
+                if (!array_key_exists('onboarding_status', $input)) {
+                    $updates[] = 'onboarding_status = :verified_onboarding_status';
+                    $params['verified_onboarding_status'] = 'verified';
+                }
             } else {
                 $updates[] = 'verified_at = NULL';
+                if (!array_key_exists('onboarding_status', $input)) {
+                    $updates[] = 'onboarding_status = :reviewed_onboarding_status';
+                    $params['reviewed_onboarding_status'] = 'reviewed';
+                }
             }
         }
 
@@ -415,6 +627,11 @@ function fab_recipient_public_by_clause(PDO $pdo, string $whereClause, array $pa
                 r.story,
                 r.needs,
                 r.zone,
+                r.city,
+                r.latitude,
+                r.longitude,
+                r.signup_source,
+                r.onboarding_status,
                 r.verified_at,
                 p.name AS verified_by_partner,
                 COALESCE((
@@ -442,7 +659,11 @@ function fab_recipient_public_by_clause(PDO $pdo, string $whereClause, array $pa
     $stmt->execute($params);
     $recipient = $stmt->fetch();
 
-    return $recipient ?: null;
+    if (!$recipient) {
+        return null;
+    }
+
+    return fab_normalize_recipient_row($recipient);
 }
 
 function fab_require_active_recipient(PDO $pdo, int $recipientId): void
@@ -503,4 +724,86 @@ function fab_create_or_get_donor(PDO $pdo, ?string $email): ?int
     $insert->execute(['email' => $email]);
 
     return (int) $pdo->lastInsertId();
+}
+
+function fab_require_partner_exists(PDO $pdo, int $partnerId): void
+{
+    $stmt = $pdo->prepare('SELECT id FROM partners WHERE id = :id LIMIT 1');
+    $stmt->execute(['id' => $partnerId]);
+    if (!$stmt->fetch()) {
+        throw new HttpException(500, 'Default partner is not configured.');
+    }
+}
+
+function fab_optional_email(mixed $value): ?string
+{
+    if ($value === null) {
+        return null;
+    }
+
+    $email = strtolower(trim((string) $value));
+    if ($email === '') {
+        return null;
+    }
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        throw new HttpException(422, 'Invalid contact_email format.');
+    }
+
+    return $email;
+}
+
+function fab_optional_phone(mixed $value): ?string
+{
+    if ($value === null) {
+        return null;
+    }
+
+    $phone = trim((string) $value);
+    if ($phone === '') {
+        return null;
+    }
+
+    if (strlen($phone) > 40) {
+        throw new HttpException(422, 'contact_phone is too long.');
+    }
+
+    return $phone;
+}
+
+function fab_optional_coordinate(mixed $value, float $min, float $max, string $field): ?float
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    if (!is_numeric($value)) {
+        throw new HttpException(422, $field . ' must be numeric.');
+    }
+
+    $number = (float) $value;
+    if ($number < $min || $number > $max) {
+        throw new HttpException(422, $field . ' is outside valid range.');
+    }
+
+    return round($number, 7);
+}
+
+function fab_normalize_recipient_row(array $row): array
+{
+    foreach (['id', 'total_received_cents', 'supporters_count'] as $intField) {
+        if (array_key_exists($intField, $row) && $row[$intField] !== null) {
+            $row[$intField] = (int) $row[$intField];
+        }
+    }
+
+    foreach (['latitude', 'longitude'] as $coordField) {
+        if (!array_key_exists($coordField, $row) || $row[$coordField] === null || $row[$coordField] === '') {
+            $row[$coordField] = null;
+            continue;
+        }
+        $row[$coordField] = (float) $row[$coordField];
+    }
+
+    return $row;
 }

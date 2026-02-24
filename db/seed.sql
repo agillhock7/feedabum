@@ -4,20 +4,45 @@ SET time_zone = '+00:00';
 -- Dev credentials: email admin@feedabum.local / password DevPass!234
 INSERT INTO partners (id, name, email, password_hash, created_at)
 VALUES
-    (1, 'Downtown Outreach Partner', 'admin@feedabum.local', '$2y$10$FqAWmuo9J6BmtR3Zpvu9Z.9OWNOXk2eoaY6vvRuhOPdGOO1t6g6C2', UTC_TIMESTAMP()) AS new
+    (1, 'Dark Horses USA', 'admin@feedabum.local', '$2y$10$FqAWmuo9J6BmtR3Zpvu9Z.9OWNOXk2eoaY6vvRuhOPdGOO1t6g6C2', UTC_TIMESTAMP()) AS new
 ON DUPLICATE KEY UPDATE
     name = new.name,
     password_hash = new.password_hash;
 
-INSERT INTO recipients (id, partner_id, nickname, story, needs, zone, verified_at, status, created_at, updated_at)
+INSERT INTO recipients (
+    id,
+    partner_id,
+    nickname,
+    story,
+    needs,
+    zone,
+    city,
+    latitude,
+    longitude,
+    signup_source,
+    onboarding_status,
+    contact_email,
+    contact_phone,
+    verified_at,
+    status,
+    created_at,
+    updated_at
+)
 VALUES
     (
         1,
         1,
         'Coach Ray',
-        'Former maintenance worker rebuilding stability while mentoring neighborhood kids.',
-        'Hot meals, socks, and bus fare for work search.',
-        'Downtown Core',
+        'Former maintenance worker rebuilding stability while mentoring neighborhood kids in Tucson.',
+        'Hot meals, socks, and bus fare for local work search.',
+        'Downtown Tucson',
+        'Tucson, AZ',
+        32.2217000,
+        -110.9692000,
+        'admin',
+        'verified',
+        NULL,
+        NULL,
         UTC_TIMESTAMP(),
         'active',
         UTC_TIMESTAMP(),
@@ -28,6 +53,13 @@ ON DUPLICATE KEY UPDATE
     story = new.story,
     needs = new.needs,
     zone = new.zone,
+    city = new.city,
+    latitude = new.latitude,
+    longitude = new.longitude,
+    signup_source = new.signup_source,
+    onboarding_status = new.onboarding_status,
+    contact_email = new.contact_email,
+    contact_phone = new.contact_phone,
     verified_at = new.verified_at,
     status = new.status,
     updated_at = UTC_TIMESTAMP();

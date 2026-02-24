@@ -21,15 +21,24 @@ Donor flow:
 - QR scan (`getUserMedia` + `jsQR`) and code fallback
 - Recipient profile by token/code
 - Verification + transparency stats
+- Location context (zone + city + coordinates)
 - One-time donation via Stripe PaymentIntent
 - Weekly/monthly recurring via Stripe Checkout subscription mode
 - Offline banner + last viewed recipient cache
 
 Partner admin flow:
 - Session login/logout
-- Recipient CRUD fields (story/needs/zone/status/verified)
+- Dynamic Tucson operations dashboard
+- Recipient search/filter pipeline (self-signups, onboarding stage, status)
+- Recipient CRUD fields (story/needs/zone/city/coordinates/status/verified)
 - Token + short code generation and token rotation
-- Recipient stats view
+- Map-enabled zone pin management
+
+Recipient self onboarding:
+- Public self-signup page (`/signup`)
+- Free signup with immediate token + short code + QR image
+- Initial routing through default outreach backer (`Dark Horses USA`)
+- Onboarding status (`new`, `reviewed`, `verified`) for staged verification rollout
 
 Backend security:
 - PDO prepared statements
@@ -50,6 +59,12 @@ mysql -u <user> -p <database> < db/schema.sql
 mysql -u <user> -p <database> < db/seed.sql
 ```
 
+If you already have an existing DB from earlier versions, run this migration once:
+
+```bash
+mysql -u <user> -p <database> < db/migrations/2026-02-24-tucson-onboarding.sql
+```
+
 Seeded dev login:
 - email: `admin@feedabum.local`
 - password: `DevPass!234`
@@ -61,6 +76,9 @@ Seeded recipient test values:
 - raw token: `demo-recipient-token-abc123`
 
 The seeded token hash expects `TOKEN_SIGNING_SECRET=dev_token_signing_secret_change_me`.
+
+Seeded partner/backer:
+- `Dark Horses USA` (partner id `1`)
 
 ### 2) API config
 
@@ -169,7 +187,7 @@ Use test events:
 
 Frontend does not hold DB credentials. Database keys (`DB_*`) belong only in `api/config/config.php` (or server env vars).
 
-Default `/api` makes production work on same domain without CORS setup.
+Default `/api` makes production work on same domain without CORS setup. For Tucson launch, keep `VITE_APP_BASE=https://fab.gops.app`.
 
 ## API Endpoints
 
@@ -177,6 +195,7 @@ Default `/api` makes production work on same domain without CORS setup.
 - `POST /api/auth/logout`
 - `GET /api/recipient/by-token?token=...`
 - `GET /api/recipient/by-code?code=...`
+- `POST /api/recipient/signup`
 - `POST /api/donation/create-intent`
 - `POST /api/subscription/create`
 - `POST /api/webhook/stripe`

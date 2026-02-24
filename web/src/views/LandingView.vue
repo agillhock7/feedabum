@@ -15,6 +15,7 @@
 
         <div class="actions">
           <button class="btn-primary" type="button" @click="focusCodeInput">Enter code now</button>
+          <router-link class="signup-link" to="/signup">Need support? Self sign-up</router-link>
           <router-link class="admin-link" to="/admin/login">Partner admin</router-link>
         </div>
       </div>
@@ -158,6 +159,10 @@ h1 {
 }
 
 .admin-link {
+  font-weight: 600;
+}
+
+.signup-link {
   font-weight: 600;
 }
 

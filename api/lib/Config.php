@@ -33,8 +33,12 @@ final class Config
             'RATE_LIMIT_DONATION_WINDOW',
             'RATE_LIMIT_LOGIN_MAX',
             'RATE_LIMIT_LOGIN_WINDOW',
+            'RATE_LIMIT_SIGNUP_MAX',
+            'RATE_LIMIT_SIGNUP_WINDOW',
             'TOKEN_SIGNING_SECRET',
             'STRIPE_PUBLISHABLE_KEY',
+            'DEFAULT_PARTNER_ID',
+            'DEFAULT_CITY',
         ];
 
         $values = [];
@@ -62,7 +66,11 @@ final class Config
             'RATE_LIMIT_DONATION_WINDOW' => 60,
             'RATE_LIMIT_LOGIN_MAX' => 10,
             'RATE_LIMIT_LOGIN_WINDOW' => 300,
+            'RATE_LIMIT_SIGNUP_MAX' => 6,
+            'RATE_LIMIT_SIGNUP_WINDOW' => 3600,
             'STRIPE_PUBLISHABLE_KEY' => '',
+            'DEFAULT_PARTNER_ID' => 1,
+            'DEFAULT_CITY' => 'Tucson, AZ',
         ];
 
         foreach ($defaults as $key => $defaultValue) {
@@ -79,6 +87,9 @@ final class Config
         $values['RATE_LIMIT_DONATION_WINDOW'] = (int) $values['RATE_LIMIT_DONATION_WINDOW'];
         $values['RATE_LIMIT_LOGIN_MAX'] = (int) $values['RATE_LIMIT_LOGIN_MAX'];
         $values['RATE_LIMIT_LOGIN_WINDOW'] = (int) $values['RATE_LIMIT_LOGIN_WINDOW'];
+        $values['RATE_LIMIT_SIGNUP_MAX'] = (int) $values['RATE_LIMIT_SIGNUP_MAX'];
+        $values['RATE_LIMIT_SIGNUP_WINDOW'] = (int) $values['RATE_LIMIT_SIGNUP_WINDOW'];
+        $values['DEFAULT_PARTNER_ID'] = (int) $values['DEFAULT_PARTNER_ID'];
 
         $required = [
             'DB_HOST',

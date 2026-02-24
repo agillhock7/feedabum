@@ -4,6 +4,7 @@ import RecipientView from '../views/RecipientView.vue'
 import DonationSuccessView from '../views/DonationSuccessView.vue'
 import AdminLoginView from '../views/AdminLoginView.vue'
 import AdminDashboardView from '../views/AdminDashboardView.vue'
+import SelfSignupView from '../views/SelfSignupView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const router = createRouter({
@@ -11,6 +12,7 @@ const router = createRouter({
   routes: [
     { path: '/', name: 'landing', component: LandingView },
     { path: '/recipient', name: 'recipient', component: RecipientView },
+    { path: '/signup', name: 'self-signup', component: SelfSignupView },
     { path: '/donation-success', name: 'donation-success', component: DonationSuccessView },
     { path: '/admin/login', name: 'admin-login', component: AdminLoginView },
     { path: '/admin', name: 'admin-dashboard', component: AdminDashboardView, meta: { requiresAuth: true } }

@@ -4,6 +4,7 @@ import { registerSW } from 'virtual:pwa-register'
 import App from './App.vue'
 import router from './router'
 import './style.css'
+import 'leaflet/dist/leaflet.css'
 import { useNetworkStore } from './stores/network'
 
 const app = createApp(App)

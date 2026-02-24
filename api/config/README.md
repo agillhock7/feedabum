@@ -30,6 +30,8 @@ That path is in the cPanel git checkout. Deployment copy then syncs it to runtim
 - `SESSION_COOKIE_SECURE`, `SESSION_COOKIE_SAMESITE`
 - `RATE_LIMIT_*`
 - `TOKEN_SIGNING_SECRET`
+- `DEFAULT_PARTNER_ID` (initial backer partner id, default `1`)
+- `DEFAULT_CITY` (default onboarding city, e.g. `Tucson, AZ`)
 
 `STRIPE_PUBLISHABLE_KEY` is used by frontend card collection.
 

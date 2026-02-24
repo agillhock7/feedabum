@@ -4,6 +4,11 @@ export interface RecipientProfile {
   story: string
   needs: string
   zone: string
+  city: string
+  latitude: number | null
+  longitude: number | null
+  signup_source: 'admin' | 'self'
+  onboarding_status: 'new' | 'reviewed' | 'verified'
   verified_at: string | null
   verified_by_partner: string
   total_received_cents: number
@@ -22,6 +27,13 @@ export interface AdminRecipient {
   story: string
   needs: string
   zone: string
+  city: string
+  latitude: number | null
+  longitude: number | null
+  signup_source: 'admin' | 'self'
+  onboarding_status: 'new' | 'reviewed' | 'verified'
+  contact_email: string | null
+  contact_phone: string | null
   verified_at: string | null
   status: 'active' | 'suspended'
   created_at: string
