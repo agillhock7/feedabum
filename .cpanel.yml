@@ -1,0 +1,5 @@
+deployment:
+  tasks:
+    - /bin/bash -lc 'REPO_PATH=/home/gopsapp1/repositories/feedabum; DEPLOY_ROOT=/home/gopsapp1/fab.gops.app; mkdir -p "$DEPLOY_ROOT" "$DEPLOY_ROOT/api"'
+    - /bin/bash -lc 'REPO_PATH=/home/gopsapp1/repositories/feedabum; DEPLOY_ROOT=/home/gopsapp1/fab.gops.app; if command -v rsync >/dev/null 2>&1; then rsync -a "$REPO_PATH/dist/" "$DEPLOY_ROOT/" --exclude ".well-known/"; else cp -R "$REPO_PATH/dist/." "$DEPLOY_ROOT/"; fi'
+    - /bin/bash -lc 'REPO_PATH=/home/gopsapp1/repositories/feedabum; DEPLOY_ROOT=/home/gopsapp1/fab.gops.app; if command -v rsync >/dev/null 2>&1; then rsync -a "$REPO_PATH/api/" "$DEPLOY_ROOT/api/"; else cp -R "$REPO_PATH/api/." "$DEPLOY_ROOT/api/"; fi'

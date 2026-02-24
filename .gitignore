@@ -1,0 +1,15 @@
+# Node / frontend
+web/node_modules/
+web/.env
+
+# API local secrets
+api/config/config.php
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
