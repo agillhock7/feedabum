@@ -34,6 +34,10 @@ That path is in the cPanel git checkout. Deployment copy then syncs it to runtim
 - `DEFAULT_CITY` (default onboarding city, e.g. `Tucson, AZ`)
 - `DEMO_LOGIN_ENABLED` (`true` or `false`)
 - `DEMO_LOGIN_EMAIL` (demo admin email to gate)
+- `MAIL_FROM_EMAIL` (from address for password reset emails)
+- `MAIL_FROM_NAME` (display sender name)
+- `PASSWORD_RESET_TTL_MINUTES` (token lifetime)
+- `RATE_LIMIT_PASSWORD_RESET_MAX`, `RATE_LIMIT_PASSWORD_RESET_WINDOW`
 
 `STRIPE_PUBLISHABLE_KEY` is used by frontend card collection.
 
@@ -58,4 +62,14 @@ From project root (replace key if needed):
 
 ```bash
 php -r '$k="sk_test_replace_me"; $ch=curl_init("https://api.stripe.com/v1/account"); curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>1,CURLOPT_HTTPHEADER=>["Authorization: Bearer $k"]]); $r=curl_exec($ch); $s=curl_getinfo($ch,CURLINFO_HTTP_CODE); curl_close($ch); echo "HTTP $s\n"; echo $r, "\n";'
+```
+
+## 6) Test password reset email
+
+Use API endpoint:
+
+```bash
+curl -X POST http://127.0.0.1:8000/auth/password/forgot \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"owner@feedabum.local"}'
 ```

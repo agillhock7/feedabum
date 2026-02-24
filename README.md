@@ -34,6 +34,7 @@ Partner admin flow:
 - Token + short code generation and token rotation
 - Map-enabled zone pin management
 - Configurable demo admin login toggle (read-only demo sessions)
+- Email-based password recovery (request + secure token reset)
 
 Recipient self onboarding:
 - Public self-signup page (`/signup`)
@@ -65,6 +66,7 @@ If you already have an existing DB from earlier versions, run this migration onc
 ```bash
 mysql -u <user> -p <database> < db/migrations/2026-02-24-tucson-onboarding.sql
 mysql -u <user> -p <database> < db/migrations/2026-02-24-user-roles-hierarchy.sql
+mysql -u <user> -p <database> < db/migrations/2026-02-24-password-reset.sql
 ```
 
 Seeded dev accounts:
@@ -104,6 +106,13 @@ Demo toggle keys:
 - `DEMO_LOGIN_EMAIL=demo@feedabum.local`
 
 When demo login is enabled, that demo account is read-only in admin endpoints.
+
+Password recovery keys:
+- `MAIL_FROM_EMAIL`
+- `MAIL_FROM_NAME`
+- `PASSWORD_RESET_TTL_MINUTES`
+- `RATE_LIMIT_PASSWORD_RESET_MAX`
+- `RATE_LIMIT_PASSWORD_RESET_WINDOW`
 
 ### 3) Run API locally
 
@@ -203,6 +212,8 @@ Default `/api` makes production work on same domain without CORS setup. For Tucs
 
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
+- `POST /api/auth/password/forgot`
+- `POST /api/auth/password/reset`
 - `POST /api/user/register`
 - `POST /api/user/login`
 - `POST /api/user/logout`

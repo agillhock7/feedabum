@@ -10,6 +10,7 @@ require_once __DIR__ . '/lib/Session.php';
 require_once __DIR__ . '/lib/Auth.php';
 require_once __DIR__ . '/lib/Throttle.php';
 require_once __DIR__ . '/lib/TokenService.php';
+require_once __DIR__ . '/lib/Mailer.php';
 require_once __DIR__ . '/lib/StripeClient.php';
 require_once __DIR__ . '/lib/StripeWebhookHandler.php';
 

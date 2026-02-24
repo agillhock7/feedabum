@@ -30,6 +30,7 @@
           Use Demo Credentials
         </button>
         <button class="btn-primary" :disabled="busy" type="submit">Login</button>
+        <router-link to="/password-reset">Forgot password?</router-link>
         <p v-if="error" class="error-text">{{ error }}</p>
       </form>
     </section>

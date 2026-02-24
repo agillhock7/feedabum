@@ -97,6 +97,155 @@ switch ($method . ' ' . $path) {
         Session::destroy();
         Response::ok();
 
+    case 'POST /auth/password/forgot':
+        $input = fab_json_input();
+        $email = fab_required_email((string) ($input['email'] ?? ''));
+
+        $limitMax = (int) $config['RATE_LIMIT_PASSWORD_RESET_MAX'];
+        $limitWindow = (int) $config['RATE_LIMIT_PASSWORD_RESET_WINDOW'];
+
+        $ipAttempt = $throttle->hit('password-reset:ip:' . fab_client_ip(), $limitMax, $limitWindow);
+        if (!$ipAttempt['allowed']) {
+            Response::error('Too many password reset requests.', 429, ['retry_after' => $ipAttempt['retry_after']]);
+        }
+
+        $emailAttempt = $throttle->hit('password-reset:email:' . sha1($email), $limitMax, $limitWindow);
+        if (!$emailAttempt['allowed']) {
+            Response::error('Too many password reset requests.', 429, ['retry_after' => $emailAttempt['retry_after']]);
+        }
+
+        $stmt = $pdo->prepare(
+            'SELECT id, email, display_name, status
+             FROM users
+             WHERE email = :email
+             LIMIT 1'
+        );
+        $stmt->execute(['email' => $email]);
+        $user = $stmt->fetch();
+
+        if ($user && (string) ($user['status'] ?? 'disabled') === 'active') {
+            $ttlMinutes = max(10, (int) $config['PASSWORD_RESET_TTL_MINUTES']);
+            $tokenRaw = bin2hex(random_bytes(32));
+            $tokenHash = fab_password_reset_token_hash($tokenRaw, (string) $config['TOKEN_SIGNING_SECRET']);
+            $expiresAt = gmdate('Y-m-d H:i:s', time() + ($ttlMinutes * 60));
+
+            $pdo->beginTransaction();
+            try {
+                $pdo->prepare(
+                    'UPDATE password_reset_tokens
+                     SET used_at = UTC_TIMESTAMP()
+                     WHERE user_id = :user_id
+                       AND used_at IS NULL
+                       AND expires_at > UTC_TIMESTAMP()'
+                )->execute(['user_id' => $user['id']]);
+
+                $pdo->prepare(
+                    'INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, used_at, request_ip, user_agent, created_at)
+                     VALUES (:user_id, :token_hash, :expires_at, NULL, :request_ip, :user_agent, UTC_TIMESTAMP())'
+                )->execute([
+                    'user_id' => $user['id'],
+                    'token_hash' => $tokenHash,
+                    'expires_at' => $expiresAt,
+                    'request_ip' => fab_client_ip(),
+                    'user_agent' => substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255),
+                ]);
+
+                $pdo->commit();
+            } catch (Throwable $exception) {
+                $pdo->rollBack();
+                throw $exception;
+            }
+
+            $resetLink = rtrim((string) $config['APP_BASE_URL'], '/') . '/password-reset?token=' . urlencode($tokenRaw);
+            $displayName = (string) ($user['display_name'] ?? 'there');
+            $sent = fab_send_password_reset_email(
+                $config,
+                (string) $user['email'],
+                $displayName,
+                $resetLink,
+                $ttlMinutes
+            );
+
+            if (!$sent) {
+                error_log('Feed A Bum password reset email failed for user_id=' . (string) $user['id']);
+            }
+
+            fab_audit($pdo, 'user', (int) $user['id'], 'auth.password_reset.request', []);
+        }
+
+        Response::ok([
+            'message' => 'If an account exists for that email, a password reset link has been sent.',
+        ]);
+
+    case 'POST /auth/password/reset':
+        $input = fab_json_input();
+        $token = trim((string) ($input['token'] ?? ''));
+        $newPassword = (string) ($input['new_password'] ?? '');
+
+        if ($token === '') {
+            throw new HttpException(422, 'token is required.');
+        }
+        if (strlen($newPassword) < 8) {
+            throw new HttpException(422, 'new_password must be at least 8 characters.');
+        }
+
+        $tokenHash = fab_password_reset_token_hash($token, (string) $config['TOKEN_SIGNING_SECRET']);
+
+        $stmt = $pdo->prepare(
+            'SELECT pr.id, pr.user_id, u.status
+             FROM password_reset_tokens pr
+             INNER JOIN users u ON u.id = pr.user_id
+             WHERE pr.token_hash = :token_hash
+               AND pr.used_at IS NULL
+               AND pr.expires_at > UTC_TIMESTAMP()
+             LIMIT 1'
+        );
+        $stmt->execute(['token_hash' => $tokenHash]);
+        $resetRow = $stmt->fetch();
+
+        if (!$resetRow) {
+            throw new HttpException(400, 'Reset token is invalid or expired.');
+        }
+
+        if ((string) ($resetRow['status'] ?? 'disabled') !== 'active') {
+            throw new HttpException(403, 'Account is disabled.');
+        }
+
+        $passwordHash = password_hash($newPassword, PASSWORD_BCRYPT);
+
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare(
+                'UPDATE users
+                 SET password_hash = :password_hash
+                 WHERE id = :user_id'
+            )->execute([
+                'password_hash' => $passwordHash,
+                'user_id' => $resetRow['user_id'],
+            ]);
+
+            $pdo->prepare(
+                'UPDATE password_reset_tokens
+                 SET used_at = UTC_TIMESTAMP()
+                 WHERE id = :id
+                    OR (user_id = :user_id AND used_at IS NULL)'
+            )->execute([
+                'id' => $resetRow['id'],
+                'user_id' => $resetRow['user_id'],
+            ]);
+
+            $pdo->commit();
+        } catch (Throwable $exception) {
+            $pdo->rollBack();
+            throw $exception;
+        }
+
+        fab_audit($pdo, 'user', (int) $resetRow['user_id'], 'auth.password_reset.complete', []);
+
+        Response::ok([
+            'message' => 'Password has been reset successfully.',
+        ]);
+
     case 'POST /user/register':
         $input = fab_json_input();
 
@@ -1213,4 +1362,38 @@ function fab_create_member_user(PDO $pdo, string $email, string $password, strin
     ]);
 
     return (int) $pdo->lastInsertId();
+}
+
+function fab_password_reset_token_hash(string $token, string $tokenSigningSecret): string
+{
+    return hash('sha256', 'password-reset:' . $token . $tokenSigningSecret);
+}
+
+function fab_send_password_reset_email(
+    array $config,
+    string $toEmail,
+    string $displayName,
+    string $resetLink,
+    int $ttlMinutes
+): bool {
+    $subject = 'Feed A Bum password reset';
+    $body = implode("\n", [
+        'Hi ' . $displayName . ',',
+        '',
+        'We received a request to reset your Feed A Bum password.',
+        '',
+        'Reset link:',
+        $resetLink,
+        '',
+        'This link expires in ' . $ttlMinutes . ' minutes.',
+        'If you did not request this, ignore this email.',
+    ]);
+
+    return Mailer::sendText(
+        $toEmail,
+        $subject,
+        $body,
+        (string) $config['MAIL_FROM_EMAIL'],
+        (string) $config['MAIL_FROM_NAME']
+    );
 }

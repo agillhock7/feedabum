@@ -41,6 +41,11 @@ final class Config
             'DEFAULT_CITY',
             'DEMO_LOGIN_ENABLED',
             'DEMO_LOGIN_EMAIL',
+            'MAIL_FROM_EMAIL',
+            'MAIL_FROM_NAME',
+            'PASSWORD_RESET_TTL_MINUTES',
+            'RATE_LIMIT_PASSWORD_RESET_MAX',
+            'RATE_LIMIT_PASSWORD_RESET_WINDOW',
         ];
 
         $values = [];
@@ -75,6 +80,11 @@ final class Config
             'DEFAULT_CITY' => 'Tucson, AZ',
             'DEMO_LOGIN_ENABLED' => false,
             'DEMO_LOGIN_EMAIL' => 'demo@feedabum.local',
+            'MAIL_FROM_EMAIL' => 'no-reply@fab.gops.app',
+            'MAIL_FROM_NAME' => 'Feed A Bum',
+            'PASSWORD_RESET_TTL_MINUTES' => 60,
+            'RATE_LIMIT_PASSWORD_RESET_MAX' => 5,
+            'RATE_LIMIT_PASSWORD_RESET_WINDOW' => 3600,
         ];
 
         foreach ($defaults as $key => $defaultValue) {
@@ -96,6 +106,9 @@ final class Config
         $values['DEFAULT_PARTNER_ID'] = (int) $values['DEFAULT_PARTNER_ID'];
         $values['DEMO_LOGIN_ENABLED'] = self::toBool($values['DEMO_LOGIN_ENABLED']);
         $values['DEMO_LOGIN_EMAIL'] = strtolower(trim((string) $values['DEMO_LOGIN_EMAIL']));
+        $values['PASSWORD_RESET_TTL_MINUTES'] = (int) $values['PASSWORD_RESET_TTL_MINUTES'];
+        $values['RATE_LIMIT_PASSWORD_RESET_MAX'] = (int) $values['RATE_LIMIT_PASSWORD_RESET_MAX'];
+        $values['RATE_LIMIT_PASSWORD_RESET_WINDOW'] = (int) $values['RATE_LIMIT_PASSWORD_RESET_WINDOW'];
 
         $required = [
             'DB_HOST',

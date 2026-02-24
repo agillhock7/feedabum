@@ -35,4 +35,11 @@ return [
     // Demo admin login toggle (read-only mode if used)
     'DEMO_LOGIN_ENABLED' => false,
     'DEMO_LOGIN_EMAIL' => 'demo@feedabum.local',
+
+    // Email/password recovery
+    'MAIL_FROM_EMAIL' => 'no-reply@fab.gops.app',
+    'MAIL_FROM_NAME' => 'Feed A Bum',
+    'PASSWORD_RESET_TTL_MINUTES' => 60,
+    'RATE_LIMIT_PASSWORD_RESET_MAX' => 5,
+    'RATE_LIMIT_PASSWORD_RESET_WINDOW' => 3600,
 ];
