@@ -27,4 +27,16 @@ final class Auth
 
         return $partner ?: null;
     }
+
+    public static function isDemoSession(): bool
+    {
+        return ($_SESSION['is_demo'] ?? false) === true;
+    }
+
+    public static function requireWritableSession(): void
+    {
+        if (self::isDemoSession()) {
+            throw new HttpException(403, 'Demo mode is read-only. Disable demo login or use a non-demo admin account for changes.');
+        }
+    }
 }

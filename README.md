@@ -33,6 +33,7 @@ Partner admin flow:
 - Recipient CRUD fields (story/needs/zone/city/coordinates/status/verified)
 - Token + short code generation and token rotation
 - Map-enabled zone pin management
+- Configurable demo admin login toggle (read-only demo sessions)
 
 Recipient self onboarding:
 - Public self-signup page (`/signup`)
@@ -94,6 +95,12 @@ Important:
 1. environment variables (`getenv`)
 2. `api/config/config.php`
 3. if missing: API fails (detailed JSON only when `APP_ENV=dev`)
+
+Demo toggle keys:
+- `DEMO_LOGIN_ENABLED=true|false`
+- `DEMO_LOGIN_EMAIL=admin@feedabum.local`
+
+When demo login is enabled, that demo account is read-only in admin endpoints.
 
 ### 3) Run API locally
 

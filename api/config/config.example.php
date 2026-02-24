@@ -31,4 +31,8 @@ return [
     'TOKEN_SIGNING_SECRET' => 'replace_with_long_random_secret',
     'DEFAULT_PARTNER_ID' => 1,
     'DEFAULT_CITY' => 'Tucson, AZ',
+
+    // Demo admin login toggle (read-only mode if used)
+    'DEMO_LOGIN_ENABLED' => false,
+    'DEMO_LOGIN_EMAIL' => 'admin@feedabum.local',
 ];

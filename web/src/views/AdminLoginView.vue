@@ -4,6 +4,10 @@
       <header>
         <h1>Partner Admin Login</h1>
         <p class="section-subtitle">Manage recipient verification, QR rotations, and profile updates.</p>
+        <p v-if="auth.demoLoginEnabled" class="chip">
+          Demo login enabled for outreach previews (read-only)
+        </p>
+        <p v-else class="section-subtitle">Demo login is currently disabled.</p>
       </header>
 
       <form @submit.prevent="submit">
@@ -17,6 +21,13 @@
           <input v-model="password" type="password" required autocomplete="current-password" />
         </label>
 
+        <button
+          v-if="auth.demoLoginEnabled"
+          type="button"
+          @click="fillDemoCredentials"
+        >
+          Use Demo Credentials
+        </button>
         <button class="btn-primary" :disabled="busy" type="submit">Login</button>
         <p v-if="error" class="error-text">{{ error }}</p>
       </form>
@@ -25,7 +36,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
@@ -36,6 +47,11 @@ const email = ref('admin@feedabum.local')
 const password = ref('DevPass!234')
 const busy = ref(false)
 const error = ref('')
+
+function fillDemoCredentials() {
+  email.value = auth.demoLoginEmail || 'admin@feedabum.local'
+  password.value = 'DevPass!234'
+}
 
 async function submit() {
   error.value = ''
@@ -50,6 +66,10 @@ async function submit() {
     busy.value = false
   }
 }
+
+onMounted(() => {
+  void auth.loadPublicSettings()
+})
 </script>
 
 <style scoped>

@@ -9,6 +9,10 @@
         <button @click="logout">Logout</button>
       </header>
 
+      <p v-if="isDemo" class="token-notice">
+        Demo mode is active. This session is read-only and cannot create or modify recipients.
+      </p>
+
       <section class="kpi-grid summary">
         <article class="kpi">
           <h4>Total recipients</h4>
@@ -43,7 +47,7 @@
           <ZoneMapPicker v-model="createCoordinates" :height="250" :interactive="true" class="full" />
 
           <label class="inline"><input v-model="createForm.verified" type="checkbox" /> Mark verified now</label>
-          <button class="btn-primary" type="submit" :disabled="busy">Create Recipient</button>
+          <button class="btn-primary" type="submit" :disabled="busy || isDemo">Create Recipient</button>
         </form>
       </section>
 
@@ -141,8 +145,8 @@
             <ZoneMapPicker v-model="editorCoordinates" :height="240" :interactive="true" class="full" />
 
             <div class="actions full">
-              <button class="btn-primary" :disabled="busy" type="submit">Save Changes</button>
-              <button type="button" :disabled="busy" @click="rotateToken(selectedRecipient.id)">Rotate Token</button>
+              <button class="btn-primary" :disabled="busy || isDemo" type="submit">Save Changes</button>
+              <button type="button" :disabled="busy || isDemo" @click="rotateToken(selectedRecipient.id)">Rotate Token</button>
             </div>
           </form>
         </section>
@@ -228,6 +232,7 @@ const editor = reactive<{
 const editorCoordinates = ref<{ lat: number | null; lng: number | null }>({ lat: null, lng: null })
 
 const partner = computed(() => auth.partner)
+const isDemo = computed(() => auth.isDemo)
 const selectedRecipient = computed(() => recipients.value.find((item) => item.id === selectedId.value) || null)
 
 const filteredRecipients = computed(() => {
@@ -304,6 +309,8 @@ async function loadRecipients() {
     const result = await api.get<{
       ok: true
       partner: Partner | null
+      is_demo?: boolean
+      demo_login_enabled?: boolean
       summary: {
         total_recipients: number
         active_recipients: number
@@ -314,6 +321,10 @@ async function loadRecipients() {
     }>('/admin/recipients')
 
     auth.partner = result.partner
+    auth.isDemo = Boolean(result.is_demo)
+    if (typeof result.demo_login_enabled === 'boolean') {
+      auth.demoLoginEnabled = result.demo_login_enabled
+    }
     summary.value = {
       total_recipients: Number(result.summary.total_recipients || 0),
       active_recipients: Number(result.summary.active_recipients || 0),
@@ -339,6 +350,11 @@ async function loadRecipients() {
 }
 
 async function createRecipient() {
+  if (isDemo.value) {
+    error.value = 'Demo mode is read-only. Log in with a non-demo admin account to create recipients.'
+    return
+  }
+
   busy.value = true
   error.value = ''
   tokenNotice.value = ''
@@ -376,6 +392,11 @@ async function saveSelected() {
     return
   }
 
+  if (isDemo.value) {
+    error.value = 'Demo mode is read-only. Log in with a non-demo admin account to save changes.'
+    return
+  }
+
   busy.value = true
   error.value = ''
   tokenNotice.value = ''
@@ -406,6 +427,11 @@ async function saveSelected() {
 }
 
 async function rotateToken(recipientId: number) {
+  if (isDemo.value) {
+    error.value = 'Demo mode is read-only. Log in with a non-demo admin account to rotate tokens.'
+    return
+  }
+
   busy.value = true
   error.value = ''
   tokenNotice.value = ''

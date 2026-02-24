@@ -32,8 +32,16 @@ That path is in the cPanel git checkout. Deployment copy then syncs it to runtim
 - `TOKEN_SIGNING_SECRET`
 - `DEFAULT_PARTNER_ID` (initial backer partner id, default `1`)
 - `DEFAULT_CITY` (default onboarding city, e.g. `Tucson, AZ`)
+- `DEMO_LOGIN_ENABLED` (`true` or `false`)
+- `DEMO_LOGIN_EMAIL` (demo admin email to gate)
 
 `STRIPE_PUBLISHABLE_KEY` is used by frontend card collection.
+
+## 3.1 Demo admin toggle
+
+- Set `DEMO_LOGIN_ENABLED=true` to allow demo admin login.
+- Set `DEMO_LOGIN_ENABLED=false` to disable demo admin login immediately.
+- Demo sessions are read-only by design (no create/update/rotate writes).
 
 ## 4) Test DB connection
 

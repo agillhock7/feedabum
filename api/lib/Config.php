@@ -39,6 +39,8 @@ final class Config
             'STRIPE_PUBLISHABLE_KEY',
             'DEFAULT_PARTNER_ID',
             'DEFAULT_CITY',
+            'DEMO_LOGIN_ENABLED',
+            'DEMO_LOGIN_EMAIL',
         ];
 
         $values = [];
@@ -71,6 +73,8 @@ final class Config
             'STRIPE_PUBLISHABLE_KEY' => '',
             'DEFAULT_PARTNER_ID' => 1,
             'DEFAULT_CITY' => 'Tucson, AZ',
+            'DEMO_LOGIN_ENABLED' => false,
+            'DEMO_LOGIN_EMAIL' => 'admin@feedabum.local',
         ];
 
         foreach ($defaults as $key => $defaultValue) {
@@ -90,6 +94,8 @@ final class Config
         $values['RATE_LIMIT_SIGNUP_MAX'] = (int) $values['RATE_LIMIT_SIGNUP_MAX'];
         $values['RATE_LIMIT_SIGNUP_WINDOW'] = (int) $values['RATE_LIMIT_SIGNUP_WINDOW'];
         $values['DEFAULT_PARTNER_ID'] = (int) $values['DEFAULT_PARTNER_ID'];
+        $values['DEMO_LOGIN_ENABLED'] = self::toBool($values['DEMO_LOGIN_ENABLED']);
+        $values['DEMO_LOGIN_EMAIL'] = strtolower(trim((string) $values['DEMO_LOGIN_EMAIL']));
 
         $required = [
             'DB_HOST',

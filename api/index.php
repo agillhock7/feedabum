@@ -15,7 +15,11 @@ $stripeClient = new StripeClient($config['STRIPE_SECRET_KEY']);
 
 switch ($method . ' ' . $path) {
     case 'GET /':
-        Response::ok(['service' => 'Feed a Bum API']);
+        Response::ok([
+            'service' => 'Feed a Bum API',
+            'demo_login_enabled' => (bool) $config['DEMO_LOGIN_ENABLED'],
+            'demo_login_email' => (string) $config['DEMO_LOGIN_EMAIL'],
+        ]);
 
     case 'POST /auth/login':
         $input = fab_json_input();
@@ -24,6 +28,11 @@ switch ($method . ' ' . $path) {
 
         if ($email === '' || $password === '') {
             throw new HttpException(422, 'Email and password are required.');
+        }
+
+        $isDemoEmail = $email === (string) $config['DEMO_LOGIN_EMAIL'];
+        if ($isDemoEmail && !(bool) $config['DEMO_LOGIN_ENABLED']) {
+            throw new HttpException(403, 'Demo login is currently disabled.');
         }
 
         $throttleKey = 'login:' . fab_client_ip() . ':' . $email;
@@ -43,6 +52,7 @@ switch ($method . ' ' . $path) {
         $throttle->clear($throttleKey);
         session_regenerate_id(true);
         $_SESSION['partner_id'] = (int) $partner['id'];
+        $_SESSION['is_demo'] = $isDemoEmail;
 
         fab_audit($pdo, 'partner', (int) $partner['id'], 'auth.login', ['email' => $email]);
 
@@ -52,6 +62,8 @@ switch ($method . ' ' . $path) {
                 'name' => (string) $partner['name'],
                 'email' => (string) $partner['email'],
             ],
+            'is_demo' => $isDemoEmail,
+            'demo_login_enabled' => (bool) $config['DEMO_LOGIN_ENABLED'],
         ]);
 
     case 'POST /auth/logout':
@@ -360,10 +372,13 @@ switch ($method . ' ' . $path) {
             'partner' => $partner,
             'summary' => $summary,
             'recipients' => $recipients,
+            'is_demo' => Auth::isDemoSession(),
+            'demo_login_enabled' => (bool) $config['DEMO_LOGIN_ENABLED'],
         ]);
 
     case 'POST /admin/recipient/create':
         $partnerId = Auth::requirePartnerId();
+        Auth::requireWritableSession();
         $input = fab_json_input();
 
         $nickname = trim((string) ($input['nickname'] ?? ''));
@@ -452,6 +467,7 @@ switch ($method . ' ' . $path) {
 
     case 'POST /admin/recipient/update':
         $partnerId = Auth::requirePartnerId();
+        Auth::requireWritableSession();
         $input = fab_json_input();
 
         $recipientId = (int) ($input['recipient_id'] ?? 0);
@@ -546,6 +562,7 @@ switch ($method . ' ' . $path) {
 
     case 'POST /admin/recipient/rotate-token':
         $partnerId = Auth::requirePartnerId();
+        Auth::requireWritableSession();
         $input = fab_json_input();
         $recipientId = (int) ($input['recipient_id'] ?? 0);
 
