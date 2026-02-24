@@ -1,6 +1,7 @@
 # Node / frontend
 web/node_modules/
 web/.env
+web/tsconfig.tsbuildinfo
 
 # API local secrets
 api/config/config.php
