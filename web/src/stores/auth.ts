@@ -37,10 +37,13 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async logout() {
-      await api.post('/auth/logout', {})
-      this.admin = null
-      this.isDemo = false
-      this.sessionChecked = true
+      try {
+        await api.post('/auth/logout', {})
+      } finally {
+        this.admin = null
+        this.isDemo = false
+        this.sessionChecked = false
+      }
     },
 
     async loadPublicSettings() {

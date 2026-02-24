@@ -580,8 +580,11 @@ async function rotateToken(recipientId: number) {
 }
 
 async function logout() {
-  await auth.logout()
-  await router.push({ name: 'admin-login' })
+  try {
+    await auth.logout()
+  } finally {
+    await router.replace({ name: 'admin-login', query: { logged_out: '1' } })
+  }
 }
 
 onMounted(async () => {
